@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workforce Community Visualization Platform</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/network-viewer.css">
+    <style>
+        /* Evolution Chain Module Button */
+        .module-switcher {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        
+        .evolution-btn {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .evolution-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .evolution-btn .icon {
+            font-size: 18px;
+        }
+        
+        /* 增强的控制面板样式 */
+        .layout-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .layout-btn {
+            padding: 8px 16px;
+            border: 2px solid #7c9cb5;
+            background: white;
+            color: #7c9cb5;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .layout-btn:hover {
+            background: #7c9cb5;
+            color: white;
+        }
+        
+        .layout-btn.active {
+            background: #7c9cb5;
+            color: white;
+            box-shadow: 0 3px 10px rgba(124, 156, 181, 0.3);
+        }
+        
+        .fit-view-btn {
+            padding: 8px 16px;
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .fit-view-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Module Switcher -->
+        <div class="module-switcher">
+            <button class="evolution-btn" onclick="window.location.href='evolution-chain.html'">
+                <span class="icon">🔗</span>
+                <span>Evolution Chains</span>
+            </button>
+        </div>
+        
+        <!-- Upload Section -->
+        <div id="uploadSection" class="upload-section">
+            <div class="header">
+                <h1>📊 Workforce Community Visualization Platform</h1>
+                <p class="subtitle">Adaptive Hierarchical Community Structure Analysis - Optimized Layout</p>
+                <div class="instruction">
+                    📌 Upload <strong>TWO files</strong>: 
+                    <br>1️⃣ Community detection results (CSV) - supports dynamic hierarchy levels
+                    <br>2️⃣ Graph edges data (CSV) - Optional for network view
+                    <br>💡 <strong>New!</strong> Multiple layout options to handle deep hierarchies
+                    <br>🔗 <strong>Click "Evolution Chains" button</strong> to explore temporal evolution
+                </div>
+            </div>
+            
+            <!-- Community Data Upload -->
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">📁</div>
+                <h3>Upload Community Detection Results</h3>
+                <p>Drag and drop CSV file here, or click to browse</p>
+                <input type="file" id="fileInput" class="file-input" accept=".csv">
+                <label for="fileInput" class="file-label">Choose Community CSV File</label>
+                <div id="communityFileStatus" style="margin-top: 15px; color: #27ae60; font-weight: 600;"></div>
+            </div>
+            
+            <!-- Graph Edges Data Upload (Optional) -->
+            <div class="upload-zone" id="graphUploadZone" style="margin-top: 20px; opacity: 0.5; pointer-events: none;">
+                <div class="upload-icon">🔗</div>
+                <h3>Upload Graph Edges Data (Optional)</h3>
+                <p>Required for network visualization of leaf communities</p>
+                <input type="file" id="graphFileInput" class="file-input" accept=".csv">
+                <label for="graphFileInput" class="file-label">Choose Edges CSV File</label>
+                <div id="graphFileStatus" style="margin-top: 15px; color: #27ae60; font-weight: 600;"></div>
+            </div>
+            
+            <div id="proceedButton" style="text-align: center; margin-top: 30px; display: none;">
+                <button onclick="App.proceedToVisualization()" style="padding: 15px 40px; font-size: 16px; background: linear-gradient(45deg, #7c9cb5, #8b9db3); color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 600;">
+                    Proceed to Visualization →
+                </button>
+            </div>
+        </div>
+        
+        <!-- Main Application (Hidden Initially) -->
+        <div id="mainApp" style="display: none;">
+            <div class="header">
+                <h1>📊 Workforce Community Visualization</h1>
+                <p class="subtitle">Interactive adaptive hierarchical community structure analysis</p>
+                <div class="instruction">
+                    💡 <strong>Interactions:</strong> 
+                    Left-click to expand/collapse | 
+                    Right-click for composition details | 
+                    Double-click <strong>leaf communities</strong> for network view
+                    <br>
+                    🔗 <strong>Explore Evolution:</strong> Click "Evolution Chains" to see temporal changes
+                </div>
+            </div>
+            
+            <!-- Layout Controls -->
+            <div class="layout-controls">
+                <strong>Layout Mode:</strong>
+                <button class="layout-btn active" onclick="changeLayout('adaptive-tree')" id="btn-adaptive-tree">
+                    🌳 Adaptive Tree
+                </button>
+                <button class="layout-btn" onclick="changeLayout('radial')" id="btn-radial">
+                    ⭕ Radial
+                </button>
+                <button class="layout-btn" onclick="changeLayout('layered')" id="btn-layered">
+                    📊 Layered
+                </button>
+                <button class="fit-view-btn" onclick="App.fitToView()">
+                    🎯 Fit to View
+                </button>
+            </div>
+            
+            <!-- Controls -->
+            <div class="controls">
+                <div class="control-group">
+                    <label for="colorAttr">Color By:</label>
+                    <select id="colorAttr">
+                        <option value="naics_industry">Industry (NAICS)</option>
+                        <option value="real_state">State</option>
+                        <option value="real_metro_area">Metro Area</option>
+                        <option value="rics_k50">RICS K50</option>
+                        <option value="rics_k200">RICS K200</option>
+                        <option value="rics_k400">RICS K400</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="sizeAttr">Size By:</label>
+                    <select id="sizeAttr">
+                        <option value="community_size">Community Size</option>
+                        <option value="workforce_total_people">Total Workforce</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="minSize">Min Community Size:</label>
+                    <input type="number" id="minSize" value="5" min="1" max="100">
+                </div>
+                
+                <div class="control-group">
+                    <label for="levelSelect">Expand to Level:</label>
+                    <select id="levelSelect" onchange="handleLevelChange(this.value)">
+                        <option value="0">Collapse All</option>
+                        <option value="1" selected>Level 1 Only</option>
+                        <option value="2">Expand to Level 2</option>
+                        <option value="3">Expand to Level 3</option>
+                        <option value="4">Expand to Level 4</option>
+                        <option value="5">Expand to Level 5</option>
+                        <option value="6">Expand to Level 6</option>
+                        <option value="all">Expand All</option>
+                    </select>
+                </div>
+                
+                <div class="control-actions">
+                    <button onclick="App.resetView()">Reset View</button>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="main-content">
+                <div class="viz-container" style="height: 850px;">
+                    <svg id="mainSvg" width="100%" height="100%"></svg>
+                    
+                    <!-- Stats Panel -->
+                    <div class="stats-panel">
+                        <h3>📈 Statistics</h3>
+                        <div id="statsContent"></div>
+                    </div>
+                    
+                    <!-- Zoom Controls -->
+                    <div class="zoom-controls">
+                        <button onclick="App.zoomIn()" title="Zoom In">+</button>
+                        <button onclick="App.zoomOut()" title="Zoom Out">−</button>
+                        <button onclick="App.resetZoom()" title="Reset Zoom">⊙</button>
+                    </div>
+                    
+                    <!-- Tooltip -->
+                    <div id="tooltip" class="tooltip"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Composition Panel -->
+    <div id="compositionPanel" class="composition-panel">
+        <div class="panel-header">
+            <h3 id="panelTitle">Community Composition</h3>
+            <button class="close-btn" onclick="App.closePanel()">×</button>
+        </div>
+        <div class="panel-content" id="panelContent"></div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/data-handler.js"></script>
+    <script src="js/graph-data-loader.js"></script>
+    <script src="js/visualizer.js"></script>
+    <script src="js/composition.js"></script>
+    <script src="js/network-viewer.js"></script>
+    <script src="js/app.js"></script>
+    
+    <script>
+        // Layout change handler
+        function changeLayout(mode) {
+            // Update button states
+            document.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('btn-' + mode).classList.add('active');
+            
+            // Change layout and re-render
+            Visualizer.setLayoutMode(mode);
+            App.render();
+            
+            // Auto fit to view after layout change
+            setTimeout(() => {
+                Visualizer.fitToView();
+            }, 100);
+        }
+        
+        // Level selection handler
+        function handleLevelChange(value) {
+            if (value === '0') {
+                App.collapseAll();
+            } else if (value === 'all') {
+                App.expandAll();
+            } else {
+                const targetLevel = parseInt(value);
+                App.expandToLevel(targetLevel);
+            }
+        }
+        
+        // Update level selector options after data is loaded
+        function updateLevelSelector() {
+            const selector = document.getElementById('levelSelect');
+            const maxLevels = Config.maxLevels;
+            
+            // Clear existing options except first two and last
+            while (selector.options.length > 2) {
+                if (selector.options[selector.options.length - 1].value === 'all') {
+                    break;
+                }
+                selector.remove(selector.options.length - 2);
+            }
+            
+            // Add options for each detected level
+            for (let i = 2; i <= maxLevels; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.text = `Expand to Level ${i}`;
+                selector.add(option, selector.options.length - 1);
+            }
+        }
+        
+        // Call this after data is loaded
+        const originalProceed = App.proceedToVisualization;
+        App.proceedToVisualization = function() {
+            originalProceed.call(App);
+            setTimeout(updateLevelSelector, 100);
+        };
+    </script>
+</body>
+</html>

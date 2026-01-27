@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Evolution Chains - Workforce Visualization Platform</title>
+    <link rel="stylesheet" href="css/evolution-styles.css">
+    <style>
+        /* Back button */
+        .back-to-main {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 2000;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #667eea;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .back-to-main:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .back-to-main .icon {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Back to Main Button -->
+        <button class="back-to-main" onclick="window.location.href='index.html'">
+            <span class="icon">←</span>
+            <span>Back to Community View</span>
+        </button>
+        
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🔗 Community Evolution Chain Visualization</h1>
+            <p class="subtitle">Interactive temporal tracking of workforce communities across 2000-2024</p>
+        </header>
+
+        <!-- Upload Section -->
+        <div id="uploadSection" class="upload-section">
+            <div class="upload-card">
+                <div class="upload-icon">📊</div>
+                <h3>Upload Evolution Chain Data</h3>
+                <p>Upload the <strong>weighted_chain_details_level1.json</strong> file</p>
+                <input type="file" id="chainFileInput" accept=".json" style="display: none;">
+                <button class="upload-btn" onclick="document.getElementById('chainFileInput').click()">
+                    Choose JSON File
+                </button>
+                <div id="uploadStatus" class="upload-status"></div>
+                
+                <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px; text-align: left;">
+                    <h4 style="margin-top: 0; color: #667eea;">💡 Quick Guide:</h4>
+                    <ul style="line-height: 1.8; color: #2c3e50;">
+                        <li>This file is generated from your Python evolution tracking script</li>
+                        <li>Contains chain metadata, communities, and temporal attributes</li>
+                        <li>File format: JSON with stable_id, length, score, communities array</li>
+                        <li>Expected location: <code>./weighted_community_matching_results/</code></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Visualization Area (Hidden Initially) -->
+        <div id="mainViz" class="main-viz" style="display: none;">
+            
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="control-group">
+                    <label>Filter by Length:</label>
+                    <select id="lengthFilter">
+                        <option value="all">All Chains</option>
+                        <option value="singleton">Singleton (1 year)</option>
+                        <option value="short">Short (2-4 years)</option>
+                        <option value="medium">Medium (5-9 years)</option>
+                        <option value="long">Long (10-19 years)</option>
+                        <option value="verylong">Very Long (20+ years)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Sort Chains By:</label>
+                    <select id="sortBy">
+                        <option value="length">Length (Longest First)</option>
+                        <option value="score">Similarity Score</option>
+                        <option value="start_year">Start Year</option>
+                        <option value="size">Community Size</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Layout Mode:</label>
+                    <select id="layoutMode">
+                        <option value="timeline">Timeline Layout</option>
+                        <option value="vertical">Vertical Lanes</option>
+                        <option value="force">Force-Directed</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Max Chains to Display:</label>
+                    <input type="number" id="maxChains" value="50" min="10" max="500" step="10">
+                </div>
+
+                <div class="control-actions">
+                    <button class="action-btn" onclick="EvolutionApp.applyFilters()">
+                        Apply Filters
+                    </button>
+                    <button class="action-btn secondary" onclick="EvolutionApp.resetFilters()">
+                        Reset
+                    </button>
+                    <button class="action-btn" onclick="EvolutionApp.fitToView()">
+                        🎯 Fit to View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="stats-panel">
+                <h3>📈 Chain Statistics</h3>
+                <div id="statsContent" class="stats-content"></div>
+            </div>
+
+            <!-- Visualization Canvas -->
+            <div class="viz-canvas">
+                <svg id="evolutionSvg" width="100%" height="100%"></svg>
+                
+                <!-- Zoom Controls -->
+                <div class="zoom-controls">
+                    <button onclick="EvolutionApp.zoomIn()" title="Zoom In">+</button>
+                    <button onclick="EvolutionApp.zoomOut()" title="Zoom Out">−</button>
+                    <button onclick="EvolutionApp.resetZoom()" title="Reset Zoom">⊙</button>
+                </div>
+
+                <!-- Year Axis -->
+                <div id="yearAxis" class="year-axis"></div>
+            </div>
+
+            <!-- Chain List Sidebar -->
+            <div class="chain-list-sidebar" id="chainListSidebar">
+                <div class="sidebar-header">
+                    <h3>Evolution Chains</h3>
+                    <button class="close-btn" onclick="EvolutionApp.toggleSidebar()">×</button>
+                </div>
+                <div class="sidebar-content" id="chainListContent"></div>
+            </div>
+
+            <!-- Toggle Sidebar Button -->
+            <button class="toggle-sidebar-btn" onclick="EvolutionApp.toggleSidebar()">
+                📋
+            </button>
+        </div>
+
+        <!-- Community Detail Panel (Modal) -->
+        <div id="communityPanel" class="community-panel">
+            <div class="panel-overlay" onclick="EvolutionApp.closeDetailPanel()"></div>
+            <div class="panel-content">
+                <div class="panel-header">
+                    <h3 id="panelTitle">Community Details</h3>
+                    <button class="close-btn" onclick="EvolutionApp.closeDetailPanel()">×</button>
+                </div>
+                <div class="panel-body" id="panelBody"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="js/evolution-config.js"></script>
+    <script src="js/evolution-data-loader.js"></script>
+    <script src="js/evolution-visualizer.js"></script>
+    <script src="js/evolution-detail-panel.js"></script>
+    <script src="js/evolution-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+/* Network Viewer Modal Styles */
+.network-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.network-modal.active {
+    display: flex;
+    opacity: 1;
+    align-items: center;
+    justify-content: center;
+}
+
+.network-modal-content {
+    width: 90%;
+    height: 90%;
+    max-width: 1400px;
+    max-height: 900px;
+    background: white;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.network-modal-header {
+    padding: 20px 30px;
+    background: linear-gradient(45deg, #7c9cb5, #8b9db3);
+    color: white;
+    border-radius: 15px 15px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.network-modal-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 500;
+}
+
+.network-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.network-btn {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.network-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.network-btn-close {
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 28px;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+}
+
+.network-btn-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+.network-modal-body {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+#networkSvg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+#networkSvg:active {
+    cursor: grabbing;
+}
+
+/* Network Elements */
+.network-link {
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.network-link:hover {
+    stroke: #7c9cb5;
+    stroke-width: 3px !important;
+    stroke-opacity: 1 !important;
+}
+
+.network-node {
+    cursor: pointer;
+}
+
+.network-node circle {
+    transition: all 0.3s;
+}
+
+.network-node:hover circle {
+    stroke-width: 3px !important;
+    filter: brightness(1.2);
+}
+
+.network-node-label {
+    font-size: 10px;
+    fill: #2c3e50;
+    pointer-events: none;
+    font-weight: 600;
+}
+
+/* Network Tooltip */
+.network-tooltip {
+    position: absolute;
+    background: rgba(44, 62, 80, 0.95);
+    color: white;
+    padding: 12px 15px;
+    border-radius: 8px;
+    pointer-events: none;
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 300px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+    z-index: 3000;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Network Legend */
+.network-legend {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+    max-height: 400px;
+    overflow-y: auto;
+    backdrop-filter: blur(10px);
+}
+
+.network-legend h4 {
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 8px;
+}
+
+#networkLegendContent {
+    font-size: 11px;
+    color: #555;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .network-modal-content {
+        width: 95%;
+        height: 95%;
+    }
+    
+    .network-modal-header {
+        padding: 15px 20px;
+    }
+    
+    .network-modal-header h3 {
+        font-size: 1.1rem;
+    }
+    
+    .network-legend {
+        max-width: 200px;
+        font-size: 10px;
+    }
+}
