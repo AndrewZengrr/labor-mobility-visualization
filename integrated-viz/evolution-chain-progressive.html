@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progressive Evolution Chain Explorer</title>
+    <link rel="stylesheet" href="css/evolution-styles.css">
+    <style>
+        /* 渐进式展开特定样式 */
+        .expandable-node {
+            cursor: pointer;
+            opacity: 1;
+        }
+        
+        .expandable-node circle {
+            stroke: #f39c12;
+            stroke-width: 3px;
+        }
+        
+        .expandable-node.expanded circle {
+            stroke: #27ae60;
+        }
+        
+        .collapsed-node {
+            opacity: 0.5;
+        }
+        
+        .path-highlight {
+            stroke: #e74c3c;
+            stroke-width: 4px;
+            opacity: 1 !important;
+        }
+        
+        /* 面包屑导航 */
+        .breadcrumb {
+            position: fixed;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1500;
+            display: none;
+            max-width: 80%;
+            overflow-x: auto;
+        }
+        
+        .breadcrumb.active {
+            display: block;
+        }
+        
+        .breadcrumb-item {
+            display: inline-block;
+            padding: 5px 12px;
+            background: #ecf0f1;
+            border-radius: 15px;
+            margin: 0 5px;
+            font-size: 12px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .breadcrumb-item.active-year {
+            background: #667eea;
+            color: white;
+        }
+        
+        .breadcrumb-arrow {
+            display: inline-block;
+            margin: 0 5px;
+            color: #95a5a6;
+        }
+        
+        /* 扩展指示器 */
+        .expand-indicator {
+            font-size: 16px;
+            font-weight: bold;
+            fill: #f39c12;
+            pointer-events: none;
+        }
+        
+        /* 统计卡片 */
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-card-title {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 8px;
+        }
+        
+        .stat-card-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        
+        /* 年份过滤器改进 */
+        .year-filter-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .year-btn {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            color: #2c3e50;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .year-btn:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+        
+        .year-btn.active {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Back to Main Button -->
+        <button class="back-to-main" onclick="window.location.href='index.html'">
+            <span class="icon">←</span>
+            <span>Back to Community View</span>
+        </button>
+        
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🔗 Progressive Evolution Chain Explorer</h1>
+            <p class="subtitle">Click to expand year-by-year community evolution paths</p>
+        </header>
+
+        <!-- Upload Section -->
+        <div id="uploadSection" class="upload-section">
+            <div class="upload-card">
+                <div class="upload-icon">📊</div>
+                <h3>Upload Data Files</h3>
+                
+                <!-- Chain Data Upload -->
+                <div style="margin-bottom: 30px;">
+                    <h4 style="color: #667eea;">1️⃣ Evolution Chain Data (Required)</h4>
+                    <p>Upload the <strong>weighted_chain_details_level1.json</strong> file</p>
+                    <input type="file" id="chainFileInput" accept=".json" style="display: none;">
+                    <button class="upload-btn" onclick="document.getElementById('chainFileInput').click()">
+                        Choose Chain JSON File
+                    </button>
+                    <div id="chainUploadStatus" class="upload-status"></div>
+                </div>
+                
+                <!-- Community Attributes Upload -->
+                <div style="margin-bottom: 30px; opacity: 0.5; pointer-events: none;" id="attributesUploadSection">
+                    <h4 style="color: #27ae60;">2️⃣ Community Attributes (Optional)</h4>
+                    <p>Upload <strong>Community Detection CSV</strong> for detailed attributes</p>
+                    <input type="file" id="attributesFileInput" accept=".csv" style="display: none;">
+                    <button class="upload-btn" style="background: linear-gradient(45deg, #27ae60, #2ecc71);" onclick="document.getElementById('attributesFileInput').click()">
+                        Choose Community CSV
+                    </button>
+                    <div id="attributesUploadStatus" class="upload-status"></div>
+                </div>
+                
+                <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px; text-align: left;">
+                    <h4 style="margin-top: 0; color: #667eea;">💡 How to Use:</h4>
+                    <ul style="line-height: 1.8; color: #2c3e50;">
+                        <li><strong>Start:</strong> Initially shows only starting year communities</li>
+                        <li><strong>Expand:</strong> Click any node to reveal next year's connections</li>
+                        <li><strong>Explore:</strong> Build evolution paths by clicking through years</li>
+                        <li><strong>Attributes:</strong> Upload CSV to see detailed community composition</li>
+                        <li><strong>Reset:</strong> Click "Collapse All" to start over</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Visualization Area -->
+        <div id="mainViz" class="main-viz" style="display: none;">
+            
+            <!-- Breadcrumb Navigation -->
+            <div id="breadcrumb" class="breadcrumb">
+                <span id="breadcrumbContent"></span>
+                <button class="action-btn" style="margin-left: 15px; padding: 5px 15px;" onclick="ProgressiveApp.clearPath()">
+                    Clear Path
+                </button>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="control-group">
+                    <label>Start Year Filter:</label>
+                    <select id="startYearFilter">
+                        <option value="all">All Start Years</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Min Chain Length:</label>
+                    <input type="number" id="minLength" value="1" min="1" max="25" step="1">
+                </div>
+
+                <div class="control-group">
+                    <label>Max Chains to Show:</label>
+                    <input type="number" id="maxChains" value="20" min="5" max="100" step="5">
+                </div>
+
+                <div class="control-group">
+                    <label>Node Size By:</label>
+                    <select id="nodeSizeBy">
+                        <option value="size">Community Size</option>
+                        <option value="constant">Constant</option>
+                    </select>
+                </div>
+
+                <div class="control-actions">
+                    <button class="action-btn" onclick="ProgressiveApp.applyFilters()">
+                        Apply Filters
+                    </button>
+                    <button class="action-btn secondary" onclick="ProgressiveApp.collapseAll()">
+                        Collapse All
+                    </button>
+                    <button class="action-btn" onclick="ProgressiveApp.expandAll()">
+                        Expand All
+                    </button>
+                    <button class="action-btn" onclick="ProgressiveApp.fitToView()">
+                        🎯 Fit to View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="stats-panel">
+                <h3>📈 Statistics</h3>
+                
+                <div class="stat-card">
+                    <div class="stat-card-title">Visible Nodes</div>
+                    <div class="stat-card-value" id="visibleNodes">0</div>
+                </div>
+                
+                <div id="statsContent" class="stats-content"></div>
+            </div>
+
+            <!-- Visualization Canvas -->
+            <div class="viz-canvas">
+                <svg id="evolutionSvg" width="100%" height="100%"></svg>
+                
+                <!-- Zoom Controls -->
+                <div class="zoom-controls">
+                    <button onclick="ProgressiveApp.zoomIn()" title="Zoom In">+</button>
+                    <button onclick="ProgressiveApp.zoomOut()" title="Zoom Out">−</button>
+                    <button onclick="ProgressiveApp.resetZoom()" title="Reset Zoom">⊙</button>
+                </div>
+
+                <!-- Year Axis -->
+                <div id="yearAxis" class="year-axis"></div>
+            </div>
+
+            <!-- Chain List Sidebar -->
+            <div class="chain-list-sidebar" id="chainListSidebar">
+                <div class="sidebar-header">
+                    <h3>Evolution Chains</h3>
+                    <button class="close-btn" onclick="ProgressiveApp.toggleSidebar()">×</button>
+                </div>
+                <div class="sidebar-content" id="chainListContent"></div>
+            </div>
+
+            <!-- Toggle Sidebar Button -->
+            <button class="toggle-sidebar-btn" onclick="ProgressiveApp.toggleSidebar()">
+                📋
+            </button>
+        </div>
+
+        <!-- Community Detail Panel -->
+        <div id="communityPanel" class="community-panel">
+            <div class="panel-overlay" onclick="ProgressiveApp.closeDetailPanel()"></div>
+            <div class="panel-content">
+                <div class="panel-header">
+                    <h3 id="panelTitle">Community Details</h3>
+                    <button class="close-btn" onclick="ProgressiveApp.closeDetailPanel()">×</button>
+                </div>
+                <div class="panel-body" id="panelBody"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="js/evolution-config.js"></script>
+    <script src="js/progressive-data-loader.js"></script>
+    <script src="js/progressive-visualizer.js"></script>
+    <script src="js/evolution-detail-panel.js"></script>
+    <script src="js/progressive-app.js"></script>
+</body>
+</html>

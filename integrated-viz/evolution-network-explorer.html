@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evolution Network Explorer - New Format</title>
+    <link rel="stylesheet" href="css/evolution-styles.css">
+    <style>
+        /* Additional styles for new format */
+        .upload-card {
+            max-width: 700px;
+        }
+        
+        .upload-card h4 {
+            color: #667eea;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .file-format-note {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #2c3e50;
+            line-height: 1.6;
+        }
+        
+        .file-format-note code {
+            background: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Back Button -->
+        <button class="back-to-main" onclick="window.location.href='index.html'">
+            <span class="icon">←</span>
+            <span>Back to Main</span>
+        </button>
+        
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🔗 Evolution Network Explorer</h1>
+            <p class="subtitle">Progressive Exploration of Community Evolution Networks</p>
+        </header>
+
+        <!-- Upload Section -->
+        <div id="uploadSection" class="upload-section">
+            <div class="upload-card">
+                <div class="upload-icon">📊</div>
+                <h3>Upload Evolution Network Data</h3>
+                
+                <!-- Network Data Upload -->
+                <div style="margin-bottom: 30px;">
+                    <h4>1️⃣ Network Data (Required)</h4>
+                    <p>Upload <strong>basic_gap1_d3_format.json</strong> (nodes + links format)</p>
+                    <input type="file" id="networkFileInput" accept=".json" style="display: none;">
+                    <button class="upload-btn" onclick="document.getElementById('networkFileInput').click()">
+                        Choose Network JSON
+                    </button>
+                    <div id="networkUploadStatus" class="upload-status"></div>
+                    
+                    <div class="file-format-note">
+                        <strong>Expected Format:</strong><br>
+                        <code>{ "nodes": [...], "links": [...] }</code><br>
+                        • Nodes: <code>id</code>, <code>year</code>, <code>community</code>, <code>degree</code><br>
+                        • Links: <code>source_id</code>, <code>target_id</code>, <code>jaccard</code>
+                    </div>
+                </div>
+                
+                <!-- Attributes Upload -->
+                <div style="margin-bottom: 30px; opacity: 0.5; pointer-events: none;" id="attributesUploadSection">
+                    <h4>2️⃣ Community Attributes (Optional)</h4>
+                    <p>Upload <strong>Community Detection CSV</strong> for detailed composition</p>
+                    <input type="file" id="attributesFileInput" accept=".csv" style="display: none;">
+                    <button class="upload-btn" style="background: linear-gradient(45deg, #27ae60, #2ecc71);" onclick="document.getElementById('attributesFileInput').click()">
+                        Choose Attributes CSV
+                    </button>
+                    <div id="attributesUploadStatus" class="upload-status"></div>
+                    
+                    <div class="file-format-note">
+                        <strong>Expected Columns:</strong><br>
+                        <code>geo_rcid</code>, <code>community_level1</code>, <code>real_state</code>,<br>
+                        <code>real_metro_area</code>, <code>naics_industry</code>, <code>workforce_total_people</code>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 10px; text-align: left;">
+                    <h4 style="margin-top: 0; color: #667eea;">💡 How It Works:</h4>
+                    <ul style="line-height: 1.8; color: #2c3e50;">
+                        <li><strong>Network Structure:</strong> Based on community matching (edges between years)</li>
+                        <li><strong>Starting Nodes:</strong> Communities with no incoming connections</li>
+                        <li><strong>Expansion:</strong> Click nodes to reveal their outgoing connections</li>
+                        <li><strong>Attributes:</strong> Optional CSV adds detailed community information</li>
+                        <li><strong>Progressive:</strong> Build paths year by year through the network</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Visualization -->
+        <div id="mainViz" class="main-viz" style="display: none;">
+            
+            <!-- Breadcrumb -->
+            <div id="breadcrumb" class="breadcrumb">
+                <span id="breadcrumbContent"></span>
+                <button class="action-btn" style="margin-left: 15px; padding: 5px 15px;" onclick="AdaptedApp.clearPath()">
+                    Clear Path
+                </button>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <div class="control-group">
+                    <label>Start Year:</label>
+                    <select id="startYearFilter">
+                        <option value="all">All Years</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Min Degree:</label>
+                    <input type="number" id="minDegree" value="0" min="0" max="50" step="1">
+                </div>
+
+                <div class="control-group">
+                    <label>Max Nodes:</label>
+                    <input type="number" id="maxNodes" value="50" min="10" max="200" step="10">
+                </div>
+
+                <div class="control-group">
+                    <label>Node Size By:</label>
+                    <select id="nodeSizeBy">
+                        <option value="degree">Total Degree</option>
+                        <option value="size">Node Size</option>
+                        <option value="constant">Constant</option>
+                    </select>
+                </div>
+
+                <div class="control-actions">
+                    <button class="action-btn" onclick="AdaptedApp.applyFilters()">
+                        Apply Filters
+                    </button>
+                    <button class="action-btn secondary" onclick="AdaptedApp.collapseAll()">
+                        Collapse All
+                    </button>
+                    <button class="action-btn" onclick="AdaptedApp.expandAll()">
+                        Expand All
+                    </button>
+                    <button class="action-btn" onclick="AdaptedApp.fitToView()">
+                        🎯 Fit to View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statistics Panel -->
+            <div class="stats-panel">
+                <h3>📈 Network Stats</h3>
+                
+                <div class="stat-card">
+                    <div class="stat-card-title">Visible Nodes</div>
+                    <div class="stat-card-value" id="visibleNodes">0</div>
+                </div>
+                
+                <div id="statsContent" class="stats-content"></div>
+            </div>
+
+            <!-- Visualization Canvas -->
+            <div class="viz-canvas">
+                <svg id="evolutionSvg" width="100%" height="100%"></svg>
+                
+                <!-- Zoom Controls -->
+                <div class="zoom-controls">
+                    <button onclick="AdaptedApp.zoomIn()" title="Zoom In">+</button>
+                    <button onclick="AdaptedApp.zoomOut()" title="Zoom Out">−</button>
+                    <button onclick="AdaptedApp.resetZoom()" title="Reset Zoom">⊙</button>
+                </div>
+            </div>
+
+            <!-- Sidebar (optional, for listing nodes) -->
+            <div class="chain-list-sidebar" id="chainListSidebar" style="display: none;">
+                <div class="sidebar-header">
+                    <h3>Network Nodes</h3>
+                    <button class="close-btn" onclick="AdaptedApp.toggleSidebar()">×</button>
+                </div>
+                <div class="sidebar-content" id="chainListContent"></div>
+            </div>
+        </div>
+
+        <!-- Detail Panel -->
+        <div id="communityPanel" class="community-panel">
+            <div class="panel-overlay" onclick="AdaptedApp.closeDetailPanel()"></div>
+            <div class="panel-content">
+                <div class="panel-header">
+                    <h3 id="panelTitle">Node Details</h3>
+                    <button class="close-btn" onclick="AdaptedApp.closeDetailPanel()">×</button>
+                </div>
+                <div class="panel-body" id="panelBody"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="js/adapted-data-loader.js"></script>
+    <script src="js/adapted-visualizer.js"></script>
+    <script src="js/adapted-app.js"></script>
+</body>
+</html>
