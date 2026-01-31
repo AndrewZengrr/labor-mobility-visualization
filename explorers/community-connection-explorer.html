@@ -63,6 +63,37 @@
             line-height: 1.5;
         }
 
+        /* 右键菜单 */
+        .context-menu {
+            position: absolute;
+            background: #1e2847;
+            border: 1px solid #4a90e2;
+            border-radius: 6px;
+            padding: 8px 0;
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            display: none;
+        }
+
+        .context-menu-item {
+            padding: 10px 16px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: #2a3555;
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: #2a3555;
+            margin: 4px 0;
+        }
+
         /* 控制面板 */
         .controls {
             padding: 20px;
@@ -345,13 +376,17 @@
         <div id="sidebar">
             <div class="header">
                 <h1>社区连接探索器</h1>
-                <p>点击社区节点逐年展开连接关系</p>
+                <p>左键点击展开/收起社区<br>右键点击查看社区属性</p>
             </div>
 
             <div class="controls">
                 <div class="control-group">
-                    <label>加载数据</label>
+                    <label>加载连接数据</label>
                     <input type="file" id="fileInput" accept=".json">
+                </div>
+                <div class="control-group">
+                    <label>加载属性数据(可选)</label>
+                    <input type="file" id="propertiesInput" accept=".json">
                 </div>
                 <div class="control-group">
                     <button class="btn btn-primary" id="resetBtn">重置视图</button>
@@ -387,6 +422,12 @@
         <div id="main-view">
             <div id="svg-container"></div>
             <div class="tooltip" id="tooltip"></div>
+            <div class="context-menu" id="contextMenu">
+                <div class="context-menu-item" id="menuViewProperties">查看社区属性</div>
+                <div class="context-menu-divider"></div>
+                <div class="context-menu-item" id="menuExpand">展开社区</div>
+                <div class="context-menu-item" id="menuCollapse">收起社区</div>
+            </div>
             <div class="legend">
                 <div class="legend-title">图例</div>
                 <div class="legend-item">
@@ -410,12 +451,14 @@
         // 全局变量
         // ============================================
         let allData = null;          // 原始数据
+        let communityProperties = {}; // 社区属性数据 {nodeId: {state_dist, metro_dist, naics_dist}}
         let visibleNodes = new Set(); // 当前可见的节点ID
         let visibleEdges = new Set(); // 当前可见的边ID
         let expandedNodes = new Set(); // 已展开的节点ID
         let nodesByYear = {};        // 按年份组织的节点
         let edgesBySource = {};      // 按源节点组织的边
         let nodeData = {};           // 节点详细信息
+        let currentContextNode = null; // 当前右键菜单对应的节点
 
         let svg, g, simulation;
         let width, height;
@@ -452,8 +495,33 @@
 
             // 绑定事件
             d3.select('#fileInput').on('change', handleFileUpload);
+            d3.select('#propertiesInput').on('change', handlePropertiesUpload);
             d3.select('#resetBtn').on('click', resetView);
             d3.select('#collapseAllBtn').on('click', collapseAll);
+
+            // 右键菜单事件
+            d3.select('#menuViewProperties').on('click', () => {
+                if (currentContextNode) showCommunityProperties(currentContextNode);
+                hideContextMenu();
+            });
+            d3.select('#menuExpand').on('click', () => {
+                if (currentContextNode) expandNode(currentContextNode.id);
+                hideContextMenu();
+            });
+            d3.select('#menuCollapse').on('click', () => {
+                if (currentContextNode) collapseNode(currentContextNode.id);
+                hideContextMenu();
+            });
+
+            // 点击空白处隐藏右键菜单
+            document.addEventListener('click', hideContextMenu);
+
+            // 禁用浏览器默认右键菜单
+            document.addEventListener('contextmenu', (e) => {
+                if (e.target.closest('#svg-container')) {
+                    e.preventDefault();
+                }
+            });
 
             // 窗口调整大小
             window.addEventListener('resize', () => {
@@ -478,6 +546,23 @@
                     loadData(data);
                 } catch (error) {
                     alert('数据格式错误: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function handlePropertiesUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    communityProperties = data;
+                    console.log('已加载社区属性数据:', Object.keys(communityProperties).length, '个社区');
+                } catch (error) {
+                    alert('属性数据格式错误: ' + error.message);
                 }
             };
             reader.readAsText(file);
@@ -577,20 +662,26 @@
                 .call(drag(simulation));
 
             nodeGroup.append('circle')
-                .attr('r', d => Math.max(8, Math.min(30, d.total_degree * 2)))
+                .attr('r', d => d.display_size || Math.max(8, Math.min(30, d.total_degree * 2)))
                 .attr('fill', d => getNodeColor(d))
                 .attr('stroke', d => expandedNodes.has(d.id) ? colors.expanded : colors.collapsed)
                 .attr('stroke-width', d => expandedNodes.has(d.id) ? 3 : 2);
 
             nodeGroup.append('text')
                 .attr('class', 'node-label')
-                .attr('dy', 25)
+                .attr('dy', d => (d.display_size || Math.max(8, Math.min(30, d.total_degree * 2))) + 15)
                 .text(d => `${d.community}`);
 
             nodeGroup
                 .on('click', (event, d) => {
+                    event.preventDefault();
                     event.stopPropagation();
                     handleNodeClick(d);
+                })
+                .on('contextmenu', (event, d) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleNodeRightClick(event, d);
                 })
                 .on('mouseenter', showNodeTooltip)
                 .on('mouseleave', hideTooltip);
@@ -624,14 +715,48 @@
         // 节点交互
         // ============================================
         function handleNodeClick(node) {
+            // 左键点击：展开或收起
             if (expandedNodes.has(node.id)) {
-                // 收起节点
                 collapseNode(node.id);
             } else {
-                // 展开节点
                 expandNode(node.id);
             }
             showNodeDetails(node);
+        }
+
+        function handleNodeRightClick(event, node) {
+            // 右键点击：显示上下文菜单
+            currentContextNode = node;
+            showContextMenu(event.pageX, event.pageY, node);
+        }
+
+        function showContextMenu(x, y, node) {
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+
+            // 根据节点状态启用/禁用菜单项
+            const expandItem = document.getElementById('menuExpand');
+            const collapseItem = document.getElementById('menuCollapse');
+
+            if (expandedNodes.has(node.id)) {
+                expandItem.style.opacity = '0.5';
+                expandItem.style.pointerEvents = 'none';
+                collapseItem.style.opacity = '1';
+                collapseItem.style.pointerEvents = 'auto';
+            } else {
+                expandItem.style.opacity = '1';
+                expandItem.style.pointerEvents = 'auto';
+                collapseItem.style.opacity = '0.5';
+                collapseItem.style.pointerEvents = 'none';
+            }
+        }
+
+        function hideContextMenu() {
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'none';
+            currentContextNode = null;
         }
 
         function expandNode(nodeId) {
@@ -698,7 +823,7 @@
             const panel = d3.select('#detailsPanel');
             const edges = edgesBySource[node.id] || [];
 
-            panel.html(`
+            let html = `
                 <h3>社区详情</h3>
                 <div class="detail-item">
                     <div class="detail-label">社区ID</div>
@@ -713,6 +838,10 @@
                     <div class="detail-value">${node.community}</div>
                 </div>
                 <div class="detail-item">
+                    <div class="detail-label">社区大小</div>
+                    <div class="detail-value">${node.size || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
                     <div class="detail-label">出度</div>
                     <div class="detail-value">${node.out_degree}</div>
                 </div>
@@ -723,7 +852,26 @@
                 <div class="detail-item">
                     <div class="detail-label">总度数</div>
                     <div class="detail-value">${node.total_degree}</div>
-                </div>
+                </div>`;
+
+            // 如果有主导属性，显示它们
+            if (node.dominant_state) {
+                html += `
+                <div class="detail-item">
+                    <div class="detail-label">主导州</div>
+                    <div class="detail-value">${node.dominant_state}</div>
+                </div>`;
+            }
+
+            if (node.dominant_naics) {
+                html += `
+                <div class="detail-item">
+                    <div class="detail-label">主导产业</div>
+                    <div class="detail-value">${node.dominant_naics}</div>
+                </div>`;
+            }
+
+            html += `
                 <div class="detail-item">
                     <div class="detail-label">状态</div>
                     <div class="detail-value">${expandedNodes.has(node.id) ? '已展开' : '未展开'}</div>
@@ -731,14 +879,110 @@
                 <div class="detail-item">
                     <div class="detail-label">下一年连接数</div>
                     <div class="detail-value">${edges.length}</div>
+                </div>`;
+
+            panel.html(html);
+        }
+
+        function showCommunityProperties(node) {
+            const panel = d3.select('#detailsPanel');
+            const properties = communityProperties[node.id];
+
+            let html = `<h3>社区属性 - ${node.id}</h3>`;
+
+            html += `
+                <div class="detail-item">
+                    <div class="detail-label">年份</div>
+                    <div class="detail-value">${node.year}</div>
                 </div>
-            `);
+                <div class="detail-item">
+                    <div class="detail-label">社区编号</div>
+                    <div class="detail-value">${node.community}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">社区大小</div>
+                    <div class="detail-value">${node.size || 'N/A'}</div>
+                </div>`;
+
+            if (properties) {
+                // 显示State分布
+                if (properties.state_dist) {
+                    html += '<h3 style="margin-top: 15px;">地理位置分布 (State)</h3>';
+                    const stateItems = Object.entries(properties.state_dist)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10);
+
+                    stateItems.forEach(([state, ratio]) => {
+                        const percentage = (ratio * 100).toFixed(2);
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${state}</div>
+                            <div class="detail-value">${percentage}%</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Metro分布
+                if (properties.metro_dist) {
+                    html += '<h3 style="margin-top: 15px;">大都市区分布 (Metro)</h3>';
+                    const metroItems = Object.entries(properties.metro_dist)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10);
+
+                    metroItems.forEach(([metro, ratio]) => {
+                        const percentage = (ratio * 100).toFixed(2);
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${metro}</div>
+                            <div class="detail-value">${percentage}%</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示产业分布
+                if (properties.naics_dist) {
+                    html += '<h3 style="margin-top: 15px;">产业分布 (NAICS)</h3>';
+                    const naicsItems = Object.entries(properties.naics_dist)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10);
+
+                    naicsItems.forEach(([naics, ratio]) => {
+                        const percentage = (ratio * 100).toFixed(2);
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${naics}</div>
+                            <div class="detail-value">${percentage}%</div>
+                        </div>`;
+                    });
+                }
+            } else {
+                // 如果没有详细属性数据，显示基本信息
+                html += '<div class="no-selection">未加载详细属性数据</div>';
+
+                if (node.dominant_state) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">主导州</div>
+                        <div class="detail-value">${node.dominant_state}</div>
+                    </div>`;
+                }
+
+                if (node.dominant_naics) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">主导产业</div>
+                        <div class="detail-value">${node.dominant_naics}</div>
+                    </div>`;
+                }
+            }
+
+            panel.html(html);
         }
 
         function showEdgeDetails(edge) {
             const panel = d3.select('#detailsPanel');
 
-            panel.html(`
+            let html = `
                 <h3>连接详情</h3>
                 <div class="detail-item">
                     <div class="detail-label">源社区</div>
@@ -748,6 +992,8 @@
                     <div class="detail-label">目标社区</div>
                     <div class="detail-value">${edge.target.id}</div>
                 </div>
+
+                <h3 style="margin-top: 15px;">核心指标</h3>
                 <div class="detail-item">
                     <div class="detail-label">Jaccard相似度</div>
                     <div class="detail-value">${edge.jaccard.toFixed(4)}</div>
@@ -765,20 +1011,133 @@
                     <div class="detail-value">${edge.overlap_size}</div>
                 </div>
                 <div class="detail-item">
+                    <div class="detail-label">并集节点数</div>
+                    <div class="detail-value">${edge.union_size || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
                     <div class="detail-label">源社区大小</div>
                     <div class="detail-value">${edge.size1}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">目标社区大小</div>
                     <div class="detail-value">${edge.size2}</div>
-                </div>
-                ${edge.growth_rate !== null ? `
+                </div>`;
+
+            if (edge.growth_rate !== null && edge.growth_rate !== undefined) {
+                html += `
                 <div class="detail-item">
                     <div class="detail-label">增长率</div>
                     <div class="detail-value">${(edge.growth_rate * 100).toFixed(2)}%</div>
-                </div>
-                ` : ''}
-            `);
+                </div>`;
+            }
+
+            // 属性相似度（参考指标）
+            if (edge.naics_cosine_similarity !== null && edge.naics_cosine_similarity !== undefined) {
+                html += '<h3 style="margin-top: 15px;">属性相似度</h3>';
+
+                if (edge.naics_cosine_similarity !== null) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">产业余弦相似度</div>
+                        <div class="detail-value">${edge.naics_cosine_similarity.toFixed(4)}</div>
+                    </div>`;
+                }
+
+                if (edge.naics_overlap_index !== null && edge.naics_overlap_index !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">产业重叠指数</div>
+                        <div class="detail-value">${edge.naics_overlap_index.toFixed(4)}</div>
+                    </div>`;
+                }
+
+                if (edge.state_cosine_similarity !== null && edge.state_cosine_similarity !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">州余弦相似度</div>
+                        <div class="detail-value">${edge.state_cosine_similarity.toFixed(4)}</div>
+                    </div>`;
+                }
+
+                if (edge.state_overlap_index !== null && edge.state_overlap_index !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">州重叠指数</div>
+                        <div class="detail-value">${edge.state_overlap_index.toFixed(4)}</div>
+                    </div>`;
+                }
+
+                if (edge.metro_cosine_similarity !== null && edge.metro_cosine_similarity !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">Metro余弦相似度</div>
+                        <div class="detail-value">${edge.metro_cosine_similarity.toFixed(4)}</div>
+                    </div>`;
+                }
+
+                if (edge.metro_overlap_index !== null && edge.metro_overlap_index !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">Metro重叠指数</div>
+                        <div class="detail-value">${edge.metro_overlap_index.toFixed(4)}</div>
+                    </div>`;
+                }
+            }
+
+            // 主导属性
+            if (edge.dominant_naics1 || edge.dominant_state1) {
+                html += '<h3 style="margin-top: 15px;">主导属性</h3>';
+
+                if (edge.dominant_naics1) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">源社区主导产业</div>
+                        <div class="detail-value">${edge.dominant_naics1}</div>
+                    </div>`;
+                }
+
+                if (edge.dominant_naics2) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">目标社区主导产业</div>
+                        <div class="detail-value">${edge.dominant_naics2}</div>
+                    </div>`;
+                }
+
+                if (edge.dominant_naics_match !== null && edge.dominant_naics_match !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">主导产业匹配</div>
+                        <div class="detail-value">${edge.dominant_naics_match ? '是' : '否'}</div>
+                    </div>`;
+                }
+
+                if (edge.dominant_state1) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">源社区主导州</div>
+                        <div class="detail-value">${edge.dominant_state1}</div>
+                    </div>`;
+                }
+
+                if (edge.dominant_state2) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">目标社区主导州</div>
+                        <div class="detail-value">${edge.dominant_state2}</div>
+                    </div>`;
+                }
+
+                if (edge.dominant_state_match !== null && edge.dominant_state_match !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">主导州匹配</div>
+                        <div class="detail-value">${edge.dominant_state_match ? '是' : '否'}</div>
+                    </div>`;
+                }
+            }
+
+            panel.html(html);
         }
 
         // ============================================
