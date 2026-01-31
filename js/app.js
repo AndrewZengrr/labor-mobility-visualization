@@ -1,4 +1,4 @@
-// 主应用模块 - 改进版,支持动态层级
+// 主应用模块 - 优化版,支持多种布局
 const App = {
     data: null,
     expandedNodes: new Set(),
@@ -149,15 +149,24 @@ const App = {
         Visualizer.init();
         this.render();
         
-        // If no graph data loaded, show info
+        // Auto fit to view after initial render
+        setTimeout(() => {
+            Visualizer.fitToView();
+        }, 500);
+        
+        // Info message
+        const layoutInfo = Config.maxLevels > 4 
+            ? `\n\n💡 Tip: For deep hierarchies (${Config.maxLevels} levels), try different layout modes:\n• Adaptive Tree - Best for moderate depth\n• Radial - Good for deep hierarchies\n• Layered - Clear level separation`
+            : '';
+        
         if (!this.graphFileLoaded) {
             setTimeout(() => {
-                alert(`📌 Network view will use inferred connections\n\nFor accurate network visualization, upload the edges_data.csv file.\n\nDetected ${Config.maxLevels} hierarchy levels in your data.`);
-            }, 500);
+                alert(`📌 Network view will use inferred connections\n\nFor accurate network visualization, upload the edges_data.csv file.\n\nDetected ${Config.maxLevels} hierarchy levels.${layoutInfo}`);
+            }, 600);
         } else {
             setTimeout(() => {
-                alert(`✅ Data loaded successfully!\n\nDetected ${Config.maxLevels} hierarchy levels.\n\n💡 Tip: Double-click leaf communities to view network structure.`);
-            }, 500);
+                alert(`✅ Data loaded successfully!\n\nDetected ${Config.maxLevels} hierarchy levels.\n\n💡 Tip: Double-click leaf communities to view network structure.${layoutInfo}`);
+            }, 600);
         }
     },
     
@@ -207,6 +216,11 @@ const App = {
         this.expandedNodes.clear();
         Visualizer.resetZoom();
         this.render();
+        
+        // Auto fit after reset
+        setTimeout(() => {
+            Visualizer.fitToView();
+        }, 100);
     },
     
     expandAll() {
@@ -217,14 +231,22 @@ const App = {
             }
         });
         this.render();
+        
+        // Auto fit after expand all
+        setTimeout(() => {
+            Visualizer.fitToView();
+        }, 100);
     },
     
     collapseAll() {
         this.expandedNodes.clear();
         this.render();
+        
+        setTimeout(() => {
+            Visualizer.fitToView();
+        }, 100);
     },
     
-    // ✅ NEW: Expand to specific level
     expandToLevel(targetLevel) {
         const communities = DataHandler.processCommunities(this.data, this.config.minSize);
         this.expandedNodes.clear();
@@ -236,6 +258,11 @@ const App = {
         });
         
         this.render();
+        
+        // Auto fit after level change
+        setTimeout(() => {
+            Visualizer.fitToView();
+        }, 100);
     },
     
     zoomIn() {
@@ -248,6 +275,11 @@ const App = {
     
     resetZoom() {
         Visualizer.resetZoom();
+    },
+    
+    // ✅ 新增: 适配视图
+    fitToView() {
+        Visualizer.fitToView();
     },
     
     closePanel() {

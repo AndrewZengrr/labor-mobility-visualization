@@ -12,7 +12,7 @@
 ## 📁 文件结构
 
 ```
-integrated-viz/
+labor-mobility-visualization/
 ├── index.html                        # 主页面 - 社区检测可视化
 ├── evolution-chain.html              # 演化链可视化页面
 ├── README.md                         # 本文档
@@ -20,19 +20,27 @@ integrated-viz/
 │   ├── styles.css                   # 主平台样式
 │   ├── network-viewer.css           # 网络视图样式
 │   └── evolution-styles.css         # 演化链样式
-└── js/
-    ├── config.js                    # 社区可视化配置
-    ├── data-handler.js              # 数据处理
-    ├── graph-data-loader.js         # 图数据加载
-    ├── visualizer.js                # 社区可视化核心
-    ├── composition.js               # 组成分析
-    ├── network-viewer.js            # 网络视图
-    ├── app.js                       # 主应用
-    ├── evolution-config.js          # 演化链配置
-    ├── evolution-data-loader.js     # 演化链数据加载
-    ├── evolution-visualizer.js      # 演化链可视化核心
-    ├── evolution-detail-panel.js    # 演化链详情面板
-    └── evolution-app.js             # 演化链应用
+├── js/
+│   ├── config.js                    # 社区可视化配置
+│   ├── data-handler.js              # 数据处理
+│   ├── graph-data-loader.js         # 图数据加载
+│   ├── visualizer.js                # 社区可视化核心
+│   ├── composition.js               # 组成分析
+│   ├── network-viewer.js            # 网络视图
+│   ├── app.js                       # 主应用
+│   ├── evolution-config.js          # 演化链配置
+│   ├── evolution-data-loader.js     # 演化链数据加载
+│   ├── evolution-visualizer.js      # 演化链可视化核心
+│   ├── evolution-detail-panel.js    # 演化链详情面板
+│   ├── evolution-app.js             # 演化链应用
+│   ├── progressive-*.js             # 渐进式探索工具
+│   └── adapted-*.js                 # 网络探索工具
+└── explorers/                        # 辅助探索工具
+    ├── community-connection-explorer.html    # 社区连接关系探索器
+    ├── evolution-chain-progressive.html      # 渐进式演化链可视化
+    ├── evolution-network-explorer.html       # 演化网络探索器
+    ├── COMMUNITY_CONNECTION_EXPLORER.md      # 连接探索器文档
+    └── sample_community_connections.json     # 示例数据
 ```
 
 ---
@@ -279,20 +287,46 @@ RC123_CA_SanFrancisco,1,1.5,RC123,Tech Corp,California,5112
 
 ## 📖 相关文档
 
-- **社区检测算法**: 参考 `LAYOUT_OPTIMIZATION.md`
-- **演化链算法**: 参考你的Python脚本文档
+- **社区连接探索器**: 参考 `explorers/COMMUNITY_CONNECTION_EXPLORER.md`
 - **D3.js文档**: https://d3js.org
+
+---
+
+## 🛠️ 辅助探索工具
+
+除了两个核心模块，本平台还提供三个辅助探索工具（位于 `explorers/` 文件夹）：
+
+### 1. 社区连接关系探索器
+- **文件**: `explorers/community-connection-explorer.html`
+- **功能**: 渐进式展开相邻年份社区的连接关系
+- **用途**: 观察社区演化链构建的中间结果
+
+### 2. 渐进式演化链可视化
+- **文件**: `explorers/evolution-chain-progressive.html`
+- **功能**: 逐步展开演化链，避免一次性显示过多数据
+- **用途**: 适合大规模演化链数据的探索
+
+### 3. 演化网络探索器
+- **文件**: `explorers/evolution-network-explorer.html`
+- **功能**: 网络视图下的演化关系探索
+- **用途**: 适合复杂网络结构的可视化分析
+
+详细使用说明请参考 `explorers/COMMUNITY_CONNECTION_EXPLORER.md`
 
 ---
 
 ## 🎉 快速开始
 
 ```bash
-# 1. 解压文件
-unzip integrated-viz.zip
+# 1. 克隆或下载项目
+git clone <repository-url>
+cd labor-mobility-visualization
 
 # 2. 打开主页面
-# 双击 index.html 或用浏览器打开
+# 直接在浏览器中打开 index.html
+# 或使用本地服务器：
+# python -m http.server 8000
+# 然后访问 http://localhost:8000
 
 # 3. 上传社区检测结果
 # 点击"Choose Community CSV File"
@@ -301,5 +335,16 @@ unzip integrated-viz.zip
 # 点击"Evolution Chains"按钮
 # 上传 weighted_chain_details_level1.json
 ```
+
+---
+
+## 📋 项目优化说明
+
+本项目已进行清理和优化：
+- ✅ 移除了重复的文件夹和zip压缩包
+- ✅ 移除了混杂的Python脚本文件
+- ✅ 将辅助工具整理到 `explorers/` 文件夹
+- ✅ 优化了文件结构，使核心功能更清晰
+- ✅ 保留了所有功能，无功能损失
 
 **祝你分析愉快!** 🚀

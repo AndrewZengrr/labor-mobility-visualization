@@ -1,22 +1,23 @@
-// Visualization core module - Improved for dynamic hierarchy
+// Visualization core module - Optimized layout for deep hierarchies
 const Visualizer = {
     svg: null,
     zoom: null,
     tooltip: null,
     width: 0,
     height: 0,
+    layoutMode: 'adaptive-tree', // 'adaptive-tree', 'radial', 'layered'
     
     init() {
         const container = d3.select('#mainSvg');
         const containerNode = container.node();
-        this.width = containerNode.clientWidth || 1200;
-        this.height = containerNode.clientHeight || 700;
+        this.width = containerNode.clientWidth || 1400;
+        this.height = containerNode.clientHeight || 900;
         
         this.svg = container;
         this.tooltip = d3.select('#tooltip');
         
         this.zoom = d3.zoom()
-            .scaleExtent([0.1, 3])
+            .scaleExtent([0.1, 5])
             .on('zoom', (event) => {
                 this.svg.select('.zoom-group').attr('transform', event.transform);
             });
@@ -34,9 +35,16 @@ const Visualizer = {
         
         const communities = DataHandler.processCommunities(data, config.minSize);
         const visibleNodes = this.getVisibleNodes(communities, expandedNodes);
-        const root = this.createHierarchy(communities, visibleNodes, expandedNodes);
         
-        this.renderTree(root, communities, config, expandedNodes, data);
+        // 根据布局模式选择渲染方法
+        if (this.layoutMode === 'radial') {
+            this.renderRadialLayout(communities, visibleNodes, expandedNodes, config, data);
+        } else if (this.layoutMode === 'layered') {
+            this.renderLayeredLayout(communities, visibleNodes, expandedNodes, config, data);
+        } else {
+            this.renderAdaptiveTree(communities, visibleNodes, expandedNodes, config, data);
+        }
+        
         this.updateStats(communities, visibleNodes, expandedNodes);
     },
     
@@ -65,9 +73,94 @@ const Visualizer = {
         return visible;
     },
     
-    createHierarchy(communities, visibleNodes, expandedNodes) {
+    // ✅ 改进的自适应树形布局
+    renderAdaptiveTree(communities, visibleNodes, expandedNodes, config, allData) {
+        const g = this.svg.select('.zoom-group');
+        g.selectAll('*').remove();
+        
+        // 计算最大深度
+        const maxDepth = Math.max(...Array.from(visibleNodes.values()).map(n => 
+            this.getNodeDepth(n.id)
+        ));
+        
+        // 动态调整节点间距
+        const baseNodeSpacing = 120;
+        const depthFactor = Math.max(1, maxDepth / 3);
+        const nodeSpacing = baseNodeSpacing * depthFactor;
+        
+        // 动态调整树的尺寸
+        const effectiveWidth = Math.max(this.width - 100, visibleNodes.size * 60);
+        const effectiveHeight = Math.max(this.height - 100, maxDepth * 200);
+        
         const tree = d3.tree()
-            .size([this.width - Config.viz.treeMargin * 2, this.height - Config.viz.treeMargin * 2])
+            .size([effectiveWidth, effectiveHeight])
+            .nodeSize([nodeSpacing, 150])  // ✅ 固定节点间距
+            .separation((a, b) => {
+                // ✅ 根据深度和父节点调整间距
+                if (a.parent === b.parent) {
+                    return 1.2;  // 兄弟节点间距
+                } else {
+                    return 2.5;  // 不同父节点间距更大
+                }
+            });
+        
+        const root = d3.hierarchy({
+            id: 'root',
+            children: Array.from(visibleNodes.values()).filter(n => !n.parent || !visibleNodes.has(n.parent))
+        }, d => {
+            if (d.id === 'root') return d.children;
+            const comm = communities.get(d.id);
+            if (expandedNodes.has(d.id) && comm) {
+                return Array.from(comm.children)
+                    .filter(childId => visibleNodes.has(childId))
+                    .map(childId => ({ id: childId }));
+            }
+            return null;
+        });
+        
+        tree(root);
+        
+        // ✅ 碰撞检测和调整
+        this.resolveCollisions(root.descendants());
+        
+        // 计算边界并居中
+        const nodes = root.descendants().filter(d => d.data.id !== 'root');
+        if (nodes.length === 0) return;
+        
+        const xExtent = d3.extent(nodes, d => d.x);
+        const yExtent = d3.extent(nodes, d => d.y);
+        
+        const offsetX = (this.width - (xExtent[1] - xExtent[0])) / 2 - xExtent[0];
+        const offsetY = 50;
+        
+        // 绘制连接线
+        const links = root.links();
+        g.selectAll('.link')
+            .data(links)
+            .enter().append('path')
+            .attr('class', 'link')
+            .attr('d', d3.linkVertical()
+                .x(d => d.x + offsetX)
+                .y(d => d.y + offsetY))
+            .attr('stroke-width', d => {
+                // ✅ 根据子节点数量调整线宽
+                const targetComm = communities.get(d.target.data.id);
+                return targetComm ? Math.min(3, 1 + targetComm.nodes.length / 50) : 1;
+            })
+            .attr('opacity', 0.4);
+        
+        this.renderNodes(g, nodes, communities, config, expandedNodes, allData, offsetX, offsetY);
+    },
+    
+    // ✅ 径向布局（适合深层级结构）
+    renderRadialLayout(communities, visibleNodes, expandedNodes, config, allData) {
+        const g = this.svg.select('.zoom-group');
+        g.selectAll('*').remove();
+        
+        const radius = Math.min(this.width, this.height) / 2 - 100;
+        
+        const tree = d3.tree()
+            .size([2 * Math.PI, radius])
             .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth);
         
         const root = d3.hierarchy({
@@ -85,29 +178,135 @@ const Visualizer = {
         });
         
         tree(root);
-        return root;
-    },
-    
-    renderTree(root, communities, config, expandedNodes, allData) {
-        const g = this.svg.select('.zoom-group');
-        g.selectAll('*').remove();
         
-        const offsetX = Config.viz.treeMargin;
-        const offsetY = Config.viz.treeMargin;
+        const nodes = root.descendants().filter(d => d.data.id !== 'root');
         
-        // Draw links
+        // 转换为笛卡尔坐标
+        nodes.forEach(d => {
+            d.cartesian_x = d.y * Math.cos(d.x - Math.PI / 2);
+            d.cartesian_y = d.y * Math.sin(d.x - Math.PI / 2);
+        });
+        
+        const centerX = this.width / 2;
+        const centerY = this.height / 2;
+        
+        // 绘制径向连接线
         const links = root.links();
         g.selectAll('.link')
             .data(links)
             .enter().append('path')
             .attr('class', 'link')
-            .attr('d', d3.linkVertical()
-                .x(d => d.x + offsetX)
-                .y(d => d.y + offsetY));
+            .attr('d', d3.linkRadial()
+                .angle(d => d.x)
+                .radius(d => d.y))
+            .attr('transform', `translate(${centerX},${centerY})`)
+            .attr('opacity', 0.4);
         
-        const nodes = root.descendants().filter(d => d.data.id !== 'root');
+        this.renderNodes(g, nodes, communities, config, expandedNodes, allData, 
+                        centerX, centerY, true);
+    },
+    
+    // ✅ 分层布局（类似Sugiyama）
+    renderLayeredLayout(communities, visibleNodes, expandedNodes, config, allData) {
+        const g = this.svg.select('.zoom-group');
+        g.selectAll('*').remove();
         
-        // Use optimized color scale
+        // 按层级分组
+        const layers = new Map();
+        visibleNodes.forEach((comm, id) => {
+            const depth = this.getNodeDepth(id);
+            if (!layers.has(depth)) {
+                layers.set(depth, []);
+            }
+            layers.get(depth).push({ id, comm });
+        });
+        
+        const maxLayerSize = Math.max(...Array.from(layers.values()).map(l => l.length));
+        const layerHeight = 180;
+        const nodeSpacing = Math.max(80, (this.width - 100) / maxLayerSize);
+        
+        const nodePositions = new Map();
+        
+        layers.forEach((layerNodes, depth) => {
+            const y = depth * layerHeight + 50;
+            const totalWidth = layerNodes.length * nodeSpacing;
+            const startX = (this.width - totalWidth) / 2;
+            
+            layerNodes.forEach((node, i) => {
+                nodePositions.set(node.id, {
+                    x: startX + i * nodeSpacing + nodeSpacing / 2,
+                    y: y
+                });
+            });
+        });
+        
+        // 绘制连接线
+        const allLinks = [];
+        visibleNodes.forEach((comm, id) => {
+            comm.children.forEach(childId => {
+                if (visibleNodes.has(childId)) {
+                    allLinks.push({ source: id, target: childId });
+                }
+            });
+        });
+        
+        g.selectAll('.link')
+            .data(allLinks)
+            .enter().append('line')
+            .attr('class', 'link')
+            .attr('x1', d => nodePositions.get(d.source).x)
+            .attr('y1', d => nodePositions.get(d.source).y)
+            .attr('x2', d => nodePositions.get(d.target).x)
+            .attr('y2', d => nodePositions.get(d.target).y)
+            .attr('opacity', 0.4);
+        
+        // 创建节点数据结构
+        const nodes = Array.from(visibleNodes.keys()).map(id => ({
+            data: { id },
+            x: nodePositions.get(id).x,
+            y: nodePositions.get(id).y
+        }));
+        
+        this.renderNodes(g, nodes, communities, config, expandedNodes, allData, 0, 0);
+    },
+    
+    // ✅ 碰撞检测和解决
+    resolveCollisions(nodes) {
+        const minDistance = 40;  // 最小节点间距
+        const iterations = 5;
+        
+        for (let iter = 0; iter < iterations; iter++) {
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const node1 = nodes[i];
+                    const node2 = nodes[j];
+                    
+                    // 跳过根节点
+                    if (node1.data.id === 'root' || node2.data.id === 'root') continue;
+                    
+                    const dx = node2.x - node1.x;
+                    const dy = node2.y - node1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < minDistance && distance > 0) {
+                        const adjust = (minDistance - distance) / 2;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        node1.x -= adjust * Math.cos(angle);
+                        node2.x += adjust * Math.cos(angle);
+                    }
+                }
+            }
+        }
+    },
+    
+    getNodeDepth(id) {
+        if (!id || id === 'root' || id === '-1') return 0;
+        return String(id).split('.').length;
+    },
+    
+    // ✅ 统一的节点渲染
+    renderNodes(g, nodes, communities, config, expandedNodes, allData, offsetX, offsetY, isRadial = false) {
         const colorScale = Config.getColorScale(config.colorAttr);
         
         const sizeScale = d3.scaleSqrt()
@@ -121,9 +320,15 @@ const Visualizer = {
             .data(nodes)
             .enter().append('g')
             .attr('class', 'node-group')
-            .attr('transform', d => `translate(${d.x + offsetX},${d.y + offsetY})`);
+            .attr('transform', d => {
+                if (isRadial) {
+                    return `translate(${d.cartesian_x + offsetX},${d.cartesian_y + offsetY})`;
+                } else {
+                    return `translate(${d.x + offsetX},${d.y + offsetY})`;
+                }
+            });
         
-        // Node circles
+        // 节点圆圈
         nodeGroup.append('circle')
             .attr('class', d => {
                 const comm = communities.get(d.data.id);
@@ -138,7 +343,6 @@ const Visualizer = {
                 const comm = communities.get(d.data.id);
                 if (!comm || comm.nodes.length === 0) return '#95a5a6';
                 
-                // Get most common value for coloring
                 const values = comm.nodes.map(n => {
                     if (config.colorAttr === 'naics_industry') {
                         return n.naics_industry;
@@ -159,6 +363,7 @@ const Visualizer = {
                 const hasChildren = comm && comm.children.size > 0;
                 return hasChildren ? 2.5 : 2;
             })
+            .style('cursor', 'pointer')
             .on('click', (event, d) => {
                 event.stopPropagation();
                 const comm = communities.get(d.data.id);
@@ -176,12 +381,8 @@ const Visualizer = {
                 event.stopPropagation();
                 const comm = communities.get(d.data.id);
                 
-                // ✅ IMPROVED: Check if it's a leaf community (regardless of level)
                 if (comm && DataHandler.isLeafCommunity(d.data.id, communities)) {
-                    console.log(`Double-clicked leaf community: ${d.data.id} (level ${comm.level})`);
                     NetworkViewer.showNetwork(d.data.id, comm, allData);
-                } else if (comm) {
-                    console.log(`Community ${d.data.id} has children, network view only for leaf communities`);
                 }
             })
             .on('mouseover', (event, d) => {
@@ -191,23 +392,32 @@ const Visualizer = {
                 this.hideTooltip();
             });
         
-        // Node labels
+        // ✅ 改进的节点标签 - 避免重叠
         nodeGroup.append('text')
             .attr('class', 'node-label')
-            .attr('dy', '0.35em')
-            .text(d => {
-                // ✅ Show both ID and level info
+            .attr('dy', d => {
                 const comm = communities.get(d.data.id);
+                const r = comm ? sizeScale(comm.nodes.length) : Config.viz.minNodeSize;
+                return r + 15;  // 标签在节点下方
+            })
+            .attr('text-anchor', 'middle')
+            .text(d => {
+                const comm = communities.get(d.data.id);
+                const depth = this.getNodeDepth(d.data.id);
+                // 简化深层级的标签
+                if (depth > 2) {
+                    const parts = d.data.id.split('.');
+                    return `${parts[parts.length - 1]} (L${comm.level})`;
+                }
                 return comm ? `${d.data.id} (L${comm.level})` : d.data.id;
             })
             .style('font-size', d => {
-                const comm = communities.get(d.data.id);
-                // Smaller font for deeper levels
-                const baseSize = 11;
-                return comm ? `${Math.max(8, baseSize - comm.level)}px` : `${baseSize}px`;
-            });
+                const depth = this.getNodeDepth(d.data.id);
+                return `${Math.max(9, 12 - depth)}px`;
+            })
+            .style('pointer-events', 'none');
         
-        // Expansion indicator
+        // 展开指示器
         nodeGroup.filter(d => {
             const comm = communities.get(d.data.id);
             return comm && comm.children.size > 0;
@@ -217,10 +427,13 @@ const Visualizer = {
         .attr('dy', '0.35em')
         .attr('x', d => {
             const comm = communities.get(d.data.id);
-            return comm ? sizeScale(comm.nodes.length) + 5 : 15;
+            return comm ? sizeScale(comm.nodes.length) + 8 : 15;
         })
         .attr('fill', '#7c9cb5')
+        .attr('font-weight', 'bold')
+        .attr('font-size', '16px')
         .text(d => expandedNodes.has(d.data.id) ? '−' : '+')
+        .style('cursor', 'pointer')
         .on('click', (event, d) => {
             event.stopPropagation();
             App.toggleNode(d.data.id);
@@ -234,9 +447,8 @@ const Visualizer = {
         const nodes = comm.nodes;
         const attributes = ['naics_industry', 'real_state', 'real_metro_area', 'rics_k50'];
         
-        // ✅ IMPROVED: Show depth and leaf status
         const isLeaf = DataHandler.isLeafCommunity(communityId, communities);
-        const depth = DataHandler.getCommunityDepth(communityId);
+        const depth = this.getNodeDepth(communityId);
         
         let html = `
             <h4>Community ${communityId}</h4>
@@ -259,12 +471,11 @@ const Visualizer = {
             <div class="stat-item">
                 <span class="stat-label">Interaction:</span>
                 <span class="stat-value">
-                    ${isLeaf ? 'Double-click for network' : 'Right-click for details'}
+                    ${isLeaf ? 'Double-click for network' : 'Click +/- to expand'}
                 </span>
             </div>
         `;
         
-        // Add composition distribution (top 5)
         attributes.forEach(attr => {
             const composition = DataHandler.calculateComposition(nodes, attr);
             if (composition.length > 0) {
@@ -293,14 +504,11 @@ const Visualizer = {
         let left = event.clientX + offsetX;
         let top = event.clientY + offsetY;
         
-        const vizRight = vizRect.right;
-        const vizBottom = vizRect.bottom;
-        
-        if (left + tooltipRect.width > vizRight) {
+        if (left + tooltipRect.width > vizRect.right) {
             left = event.clientX - tooltipRect.width - offsetX;
         }
         
-        if (top + tooltipRect.height > vizBottom) {
+        if (top + tooltipRect.height > vizRect.bottom) {
             top = event.clientY - tooltipRect.height - offsetY;
         }
         
@@ -327,7 +535,6 @@ const Visualizer = {
         const totalCompanies = Array.from(communities.values()).reduce((sum, c) => sum + c.nodes.length, 0);
         const avgSize = totalCompanies / totalCommunities || 0;
         
-        // ✅ NEW: Count communities by level
         const levelCounts = {};
         communities.forEach(comm => {
             levelCounts[comm.level] = (levelCounts[comm.level] || 0) + 1;
@@ -342,6 +549,7 @@ const Visualizer = {
         
         document.getElementById('statsContent').innerHTML = `
             <div style="line-height: 1.8">
+                <strong>Layout:</strong> ${this.layoutMode}<br>
                 <strong>Max Levels:</strong> ${Config.maxLevels}<br>
                 ${levelStats}
                 <strong>Total Communities:</strong> ${totalCommunities}<br>
@@ -351,6 +559,12 @@ const Visualizer = {
                 <strong>Average Size:</strong> ${avgSize.toFixed(1)}
             </div>
         `;
+    },
+    
+    // 切换布局模式
+    setLayoutMode(mode) {
+        this.layoutMode = mode;
+        console.log('Layout mode changed to:', mode);
     },
     
     zoomIn() {
@@ -363,5 +577,28 @@ const Visualizer = {
     
     resetZoom() {
         this.svg.transition().call(this.zoom.transform, d3.zoomIdentity);
+    },
+    
+    // ✅ 自动适配缩放
+    fitToView() {
+        const g = this.svg.select('.zoom-group');
+        const bounds = g.node().getBBox();
+        
+        const fullWidth = this.width;
+        const fullHeight = this.height;
+        const width = bounds.width;
+        const height = bounds.height;
+        
+        const midX = bounds.x + width / 2;
+        const midY = bounds.y + height / 2;
+        
+        const scale = 0.9 / Math.max(width / fullWidth, height / fullHeight);
+        const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
+        
+        this.svg.transition()
+            .duration(750)
+            .call(this.zoom.transform, d3.zoomIdentity
+                .translate(translate[0], translate[1])
+                .scale(scale));
     }
 };
