@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社区连接关系探索器 - 渐进式展开</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #151b35;
+            border-right: 1px solid #2a3555;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #main-view {
+            flex: 1;
+            position: relative;
+        }
+
+        #svg-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 头部样式 */
+        .header {
+            padding: 20px;
+            background: linear-gradient(135deg, #1e2847 0%, #2a3555 100%);
+            border-bottom: 1px solid #3a4565;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: #8892b0;
+            line-height: 1.5;
+        }
+
+        /* 控制面板 */
+        .controls {
+            padding: 20px;
+            border-bottom: 1px solid #2a3555;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            color: #8892b0;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 10px 15px;
+            background: #2a3555;
+            color: #e0e0e0;
+            border: 1px solid #3a4565;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #3a4565;
+            border-color: #4a5575;
+        }
+
+        .btn-primary {
+            background: #4a90e2;
+            border-color: #4a90e2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5aa0f2;
+            border-color: #5aa0f2;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #f75c4c;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            background: #1a2140;
+            border: 1px solid #3a4565;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 12px;
+        }
+
+        /* 统计信息 */
+        .stats {
+            padding: 15px 20px;
+            background: #1a2140;
+            border-bottom: 1px solid #2a3555;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 13px;
+            border-bottom: 1px solid #2a3555;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #8892b0;
+        }
+
+        .stat-value {
+            color: #4a90e2;
+            font-weight: 500;
+        }
+
+        /* 详情面板 */
+        .details {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .details h3 {
+            font-size: 14px;
+            color: #ffffff;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2a3555;
+        }
+
+        .detail-item {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #1a2140;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .detail-label {
+            color: #8892b0;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+
+        .no-selection {
+            text-align: center;
+            color: #6a7590;
+            padding: 40px 20px;
+            font-size: 13px;
+        }
+
+        /* 节点和边样式 */
+        .node {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .node.expanded {
+            stroke: #4a90e2;
+            stroke-width: 3px;
+        }
+
+        .node.collapsed {
+            stroke: #8892b0;
+            stroke-width: 2px;
+        }
+
+        .node:hover {
+            stroke: #5aa0f2;
+            stroke-width: 3px;
+        }
+
+        .node-label {
+            font-size: 10px;
+            fill: #e0e0e0;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
+        .link {
+            fill: none;
+            stroke-opacity: 0.6;
+            transition: all 0.3s;
+        }
+
+        .link:hover {
+            stroke-opacity: 1;
+            stroke-width: 3px !important;
+        }
+
+        .link-label {
+            font-size: 9px;
+            fill: #8892b0;
+            pointer-events: none;
+        }
+
+        /* 图例 */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(21, 27, 53, 0.95);
+            border: 1px solid #2a3555;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 12px;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid #3a4565;
+        }
+
+        /* 提示信息 */
+        .tooltip {
+            position: absolute;
+            padding: 10px 12px;
+            background: rgba(21, 27, 53, 0.98);
+            border: 1px solid #4a90e2;
+            border-radius: 6px;
+            pointer-events: none;
+            font-size: 12px;
+            color: #e0e0e0;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        /* 加载状态 */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #8892b0;
+        }
+
+        .spinner {
+            border: 3px solid #2a3555;
+            border-top: 3px solid #4a90e2;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1a2140;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #3a4565;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4a5575;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- 侧边栏 -->
+        <div id="sidebar">
+            <div class="header">
+                <h1>社区连接探索器</h1>
+                <p>点击社区节点逐年展开连接关系</p>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label>加载数据</label>
+                    <input type="file" id="fileInput" accept=".json">
+                </div>
+                <div class="control-group">
+                    <button class="btn btn-primary" id="resetBtn">重置视图</button>
+                </div>
+                <div class="control-group">
+                    <button class="btn btn-danger" id="collapseAllBtn">收起所有</button>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">可见社区</span>
+                    <span class="stat-value" id="visibleNodes">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">可见连接</span>
+                    <span class="stat-value" id="visibleEdges">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">当前年份范围</span>
+                    <span class="stat-value" id="yearRange">-</span>
+                </div>
+            </div>
+
+            <div class="details" id="detailsPanel">
+                <div class="no-selection">
+                    点击社区或连接边查看详细信息
+                </div>
+            </div>
+        </div>
+
+        <!-- 主视图 -->
+        <div id="main-view">
+            <div id="svg-container"></div>
+            <div class="tooltip" id="tooltip"></div>
+            <div class="legend">
+                <div class="legend-title">图例</div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4a90e2;"></div>
+                    <span>已展开社区</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #8892b0;"></div>
+                    <span>未展开社区</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e74c3c;"></div>
+                    <span>叶子社区(无后继)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // 全局变量
+        // ============================================
+        let allData = null;          // 原始数据
+        let visibleNodes = new Set(); // 当前可见的节点ID
+        let visibleEdges = new Set(); // 当前可见的边ID
+        let expandedNodes = new Set(); // 已展开的节点ID
+        let nodesByYear = {};        // 按年份组织的节点
+        let edgesBySource = {};      // 按源节点组织的边
+        let nodeData = {};           // 节点详细信息
+
+        let svg, g, simulation;
+        let width, height;
+
+        // 颜色方案
+        const colors = {
+            expanded: '#4a90e2',
+            collapsed: '#8892b0',
+            leaf: '#e74c3c',
+            link: '#6a7590'
+        };
+
+        // ============================================
+        // 初始化
+        // ============================================
+        function init() {
+            const container = d3.select('#svg-container');
+            width = container.node().clientWidth;
+            height = container.node().clientHeight;
+
+            svg = container.append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            g = svg.append('g');
+
+            // 添加缩放功能
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            svg.call(zoom);
+
+            // 绑定事件
+            d3.select('#fileInput').on('change', handleFileUpload);
+            d3.select('#resetBtn').on('click', resetView);
+            d3.select('#collapseAllBtn').on('click', collapseAll);
+
+            // 窗口调整大小
+            window.addEventListener('resize', () => {
+                width = container.node().clientWidth;
+                height = container.node().clientHeight;
+                svg.attr('width', width).attr('height', height);
+                if (simulation) simulation.force('center', d3.forceCenter(width / 2, height / 2));
+            });
+        }
+
+        // ============================================
+        // 数据加载
+        // ============================================
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    loadData(data);
+                } catch (error) {
+                    alert('数据格式错误: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function loadData(data) {
+            allData = data;
+
+            // 组织数据结构
+            nodesByYear = {};
+            edgesBySource = {};
+            nodeData = {};
+
+            // 处理节点
+            data.nodes.forEach(node => {
+                const year = node.year;
+                if (!nodesByYear[year]) nodesByYear[year] = [];
+                nodesByYear[year].push(node);
+                nodeData[node.id] = node;
+            });
+
+            // 处理边
+            data.links.forEach(edge => {
+                if (!edgesBySource[edge.source]) edgesBySource[edge.source] = [];
+                edgesBySource[edge.source].push(edge);
+            });
+
+            // 找到最小年份并初始化视图
+            const minYear = Math.min(...Object.keys(nodesByYear).map(Number));
+            initializeView(minYear);
+        }
+
+        function initializeView(startYear) {
+            // 清空状态
+            visibleNodes.clear();
+            visibleEdges.clear();
+            expandedNodes.clear();
+
+            // 显示初始年份的所有社区
+            const initialNodes = nodesByYear[startYear] || [];
+            initialNodes.forEach(node => {
+                visibleNodes.add(node.id);
+            });
+
+            updateVisualization();
+        }
+
+        // ============================================
+        // 可视化更新
+        // ============================================
+        function updateVisualization() {
+            // 准备可见的节点和边数据
+            const nodes = Array.from(visibleNodes).map(id => nodeData[id]);
+            const links = Array.from(visibleEdges).map(edgeId => {
+                const edge = allData.links.find(e => getEdgeId(e) === edgeId);
+                return {
+                    ...edge,
+                    source: nodeData[edge.source],
+                    target: nodeData[edge.target]
+                };
+            });
+
+            // 创建力导向图模拟
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links)
+                    .id(d => d.id)
+                    .distance(150))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('x', d3.forceX(d => {
+                    // 按年份横向排列
+                    const years = Array.from(new Set(nodes.map(n => n.year))).sort();
+                    const index = years.indexOf(d.year);
+                    return width * (index + 1) / (years.length + 1);
+                }).strength(0.5))
+                .force('y', d3.forceY(height / 2).strength(0.1));
+
+            // 绘制边
+            const linkGroup = g.selectAll('.link')
+                .data(links, d => getEdgeId(d))
+                .join('path')
+                .attr('class', 'link')
+                .attr('stroke', colors.link)
+                .attr('stroke-width', d => Math.max(1, d.jaccard * 10))
+                .on('mouseenter', showEdgeTooltip)
+                .on('mouseleave', hideTooltip)
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    showEdgeDetails(d);
+                });
+
+            // 绘制节点
+            const nodeGroup = g.selectAll('.node')
+                .data(nodes, d => d.id)
+                .join('g')
+                .attr('class', 'node')
+                .call(drag(simulation));
+
+            nodeGroup.append('circle')
+                .attr('r', d => Math.max(8, Math.min(30, d.total_degree * 2)))
+                .attr('fill', d => getNodeColor(d))
+                .attr('stroke', d => expandedNodes.has(d.id) ? colors.expanded : colors.collapsed)
+                .attr('stroke-width', d => expandedNodes.has(d.id) ? 3 : 2);
+
+            nodeGroup.append('text')
+                .attr('class', 'node-label')
+                .attr('dy', 25)
+                .text(d => `${d.community}`);
+
+            nodeGroup
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    handleNodeClick(d);
+                })
+                .on('mouseenter', showNodeTooltip)
+                .on('mouseleave', hideTooltip);
+
+            // 更新位置
+            simulation.on('tick', () => {
+                linkGroup.attr('d', d => {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dr = Math.sqrt(dx * dx + dy * dy) * 2;
+                    return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+                });
+
+                nodeGroup.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+            updateStats();
+        }
+
+        function getNodeColor(node) {
+            if (expandedNodes.has(node.id)) return colors.expanded;
+            if (!edgesBySource[node.id] || edgesBySource[node.id].length === 0) return colors.leaf;
+            return colors.collapsed;
+        }
+
+        function getEdgeId(edge) {
+            return `${edge.source}-${edge.target}`;
+        }
+
+        // ============================================
+        // 节点交互
+        // ============================================
+        function handleNodeClick(node) {
+            if (expandedNodes.has(node.id)) {
+                // 收起节点
+                collapseNode(node.id);
+            } else {
+                // 展开节点
+                expandNode(node.id);
+            }
+            showNodeDetails(node);
+        }
+
+        function expandNode(nodeId) {
+            const edges = edgesBySource[nodeId] || [];
+            if (edges.length === 0) return;
+
+            expandedNodes.add(nodeId);
+
+            edges.forEach(edge => {
+                const targetId = edge.target;
+                visibleNodes.add(targetId);
+                visibleEdges.add(getEdgeId(edge));
+            });
+
+            updateVisualization();
+        }
+
+        function collapseNode(nodeId) {
+            const edges = edgesBySource[nodeId] || [];
+
+            expandedNodes.delete(nodeId);
+
+            edges.forEach(edge => {
+                const targetId = edge.target;
+                const edgeId = getEdgeId(edge);
+
+                // 移除边
+                visibleEdges.delete(edgeId);
+
+                // 检查目标节点是否还有其他入边
+                const hasOtherIncoming = Array.from(visibleEdges).some(eId => {
+                    const e = allData.links.find(link => getEdgeId(link) === eId);
+                    return e && e.target === targetId;
+                });
+
+                // 如果没有其他入边，移除节点
+                if (!hasOtherIncoming) {
+                    visibleNodes.delete(targetId);
+                    // 递归收起该节点
+                    if (expandedNodes.has(targetId)) {
+                        collapseNode(targetId);
+                    }
+                }
+            });
+
+            updateVisualization();
+        }
+
+        function collapseAll() {
+            const minYear = Math.min(...Array.from(visibleNodes).map(id => nodeData[id].year));
+            initializeView(minYear);
+        }
+
+        function resetView() {
+            if (!allData) return;
+            const minYear = Math.min(...Object.keys(nodesByYear).map(Number));
+            initializeView(minYear);
+        }
+
+        // ============================================
+        // 详情显示
+        // ============================================
+        function showNodeDetails(node) {
+            const panel = d3.select('#detailsPanel');
+            const edges = edgesBySource[node.id] || [];
+
+            panel.html(`
+                <h3>社区详情</h3>
+                <div class="detail-item">
+                    <div class="detail-label">社区ID</div>
+                    <div class="detail-value">${node.id}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">年份</div>
+                    <div class="detail-value">${node.year}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">社区编号</div>
+                    <div class="detail-value">${node.community}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">出度</div>
+                    <div class="detail-value">${node.out_degree}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">入度</div>
+                    <div class="detail-value">${node.in_degree}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">总度数</div>
+                    <div class="detail-value">${node.total_degree}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">状态</div>
+                    <div class="detail-value">${expandedNodes.has(node.id) ? '已展开' : '未展开'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">下一年连接数</div>
+                    <div class="detail-value">${edges.length}</div>
+                </div>
+            `);
+        }
+
+        function showEdgeDetails(edge) {
+            const panel = d3.select('#detailsPanel');
+
+            panel.html(`
+                <h3>连接详情</h3>
+                <div class="detail-item">
+                    <div class="detail-label">源社区</div>
+                    <div class="detail-value">${edge.source.id}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">目标社区</div>
+                    <div class="detail-value">${edge.target.id}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Jaccard相似度</div>
+                    <div class="detail-value">${edge.jaccard.toFixed(4)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">前向保留率</div>
+                    <div class="detail-value">${edge.retention_forward.toFixed(4)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">后向保留率</div>
+                    <div class="detail-value">${edge.retention_backward.toFixed(4)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">重叠节点数</div>
+                    <div class="detail-value">${edge.overlap_size}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">源社区大小</div>
+                    <div class="detail-value">${edge.size1}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">目标社区大小</div>
+                    <div class="detail-value">${edge.size2}</div>
+                </div>
+                ${edge.growth_rate !== null ? `
+                <div class="detail-item">
+                    <div class="detail-label">增长率</div>
+                    <div class="detail-value">${(edge.growth_rate * 100).toFixed(2)}%</div>
+                </div>
+                ` : ''}
+            `);
+        }
+
+        // ============================================
+        // 提示信息
+        // ============================================
+        function showNodeTooltip(event, node) {
+            const tooltip = d3.select('#tooltip');
+            const edges = edgesBySource[node.id] || [];
+
+            tooltip.html(`
+                <strong>${node.year} - 社区${node.community}</strong><br>
+                出度: ${node.out_degree} | 入度: ${node.in_degree}<br>
+                ${expandedNodes.has(node.id) ? '已展开' : '点击展开'} (${edges.length}个连接)
+            `)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 10) + 'px')
+            .classed('show', true);
+        }
+
+        function showEdgeTooltip(event, edge) {
+            const tooltip = d3.select('#tooltip');
+
+            tooltip.html(`
+                <strong>连接</strong><br>
+                Jaccard: ${edge.jaccard.toFixed(4)}<br>
+                重叠节点: ${edge.overlap_size}<br>
+                点击查看详情
+            `)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 10) + 'px')
+            .classed('show', true);
+        }
+
+        function hideTooltip() {
+            d3.select('#tooltip').classed('show', false);
+        }
+
+        // ============================================
+        // 拖拽功能
+        // ============================================
+        function drag(simulation) {
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+
+            return d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended);
+        }
+
+        // ============================================
+        // 统计信息更新
+        // ============================================
+        function updateStats() {
+            d3.select('#visibleNodes').text(visibleNodes.size);
+            d3.select('#visibleEdges').text(visibleEdges.size);
+
+            if (visibleNodes.size > 0) {
+                const years = Array.from(visibleNodes).map(id => nodeData[id].year);
+                const minYear = Math.min(...years);
+                const maxYear = Math.max(...years);
+                d3.select('#yearRange').text(minYear === maxYear ? minYear : `${minYear} - ${maxYear}`);
+            } else {
+                d3.select('#yearRange').text('-');
+            }
+        }
+
+        // ============================================
+        // 启动
+        // ============================================
+        init();
+    </script>
+</body>
+</html>
