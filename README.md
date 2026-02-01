@@ -2,10 +2,10 @@
 
 ## 🎯 概述
 
-这是一个集成的劳动力社区可视化平台，包含两个核心模块：
+这是一个劳动力社区可视化平台，用于分析和可视化社区结构及其跨时间演化。包含两个核心模块：
 
-1. **社区检测可视化** (主页面) - 展示单一年份的层级社区结构
-2. **演化链可视化** (Evolution Chains) - 展示社区跨时间演化轨迹
+1. **社区检测可视化** (index.html) - 展示单一年份的层级社区结构
+2. **社区连接关系探索器** (community-connection-explorer.html) - 渐进式展开社区间的演化连接
 
 ---
 
@@ -13,34 +13,27 @@
 
 ```
 labor-mobility-visualization/
-├── index.html                        # 主页面 - 社区检测可视化
-├── evolution-chain.html              # 演化链可视化页面
-├── README.md                         # 本文档
+├── index.html                                    # 主页面 - 社区检测可视化
+├── prepare_community_connections_with_attributes.py  # 数据准备脚本
+├── README.md                                     # 本文档
+│
 ├── css/
-│   ├── styles.css                   # 主平台样式
-│   ├── network-viewer.css           # 网络视图样式
-│   └── evolution-styles.css         # 演化链样式
+│   ├── styles.css                               # 主平台样式
+│   └── network-viewer.css                       # 网络视图样式
+│
 ├── js/
-│   ├── config.js                    # 社区可视化配置
-│   ├── data-handler.js              # 数据处理
-│   ├── graph-data-loader.js         # 图数据加载
-│   ├── visualizer.js                # 社区可视化核心
-│   ├── composition.js               # 组成分析
-│   ├── network-viewer.js            # 网络视图
-│   ├── app.js                       # 主应用
-│   ├── evolution-config.js          # 演化链配置
-│   ├── evolution-data-loader.js     # 演化链数据加载
-│   ├── evolution-visualizer.js      # 演化链可视化核心
-│   ├── evolution-detail-panel.js    # 演化链详情面板
-│   ├── evolution-app.js             # 演化链应用
-│   ├── progressive-*.js             # 渐进式探索工具
-│   └── adapted-*.js                 # 网络探索工具
-└── explorers/                        # 辅助探索工具
-    ├── community-connection-explorer.html    # 社区连接关系探索器
-    ├── evolution-chain-progressive.html      # 渐进式演化链可视化
-    ├── evolution-network-explorer.html       # 演化网络探索器
-    ├── COMMUNITY_CONNECTION_EXPLORER.md      # 连接探索器文档
-    └── sample_community_connections.json     # 示例数据
+│   ├── config.js                                # 社区可视化配置
+│   ├── data-handler.js                          # 数据处理
+│   ├── graph-data-loader.js                     # 图数据加载
+│   ├── visualizer.js                            # 社区可视化核心
+│   ├── composition.js                           # 组成分析
+│   ├── network-viewer.js                        # 网络视图
+│   └── app.js                                   # 主应用
+│
+└── explorers/                                    # 探索工具
+    ├── community-connection-explorer.html       # 社区连接关系探索器 ⭐
+    ├── COMMUNITY_CONNECTION_EXPLORER.md         # 连接探索器文档
+    └── sample_community_connections.json        # 示例数据
 ```
 
 ---
@@ -55,10 +48,10 @@ labor-mobility-visualization/
 
 #### Step 2: 上传数据
 1. **必需文件**: 社区检测结果CSV
-   - 文件示例: `workforce_geo_community_2019_2020_results.csv`
+   - 文件示例: `workforce_geo_community_2023_2024_results.csv`
    - 包含: `geo_rcid`, `community_level1/2/3`, 各种属性列
 
-2. **可选文件**: 图边数据CSV  
+2. **可选文件**: 图边数据CSV
    - 文件示例: `edges_data.csv`
    - 用于网络可视化
    - 包含: `source`, `target`, `weight`
@@ -70,281 +63,361 @@ labor-mobility-visualization/
 - **切换布局**: 使用布局模式按钮
 - **过滤**: 调整最小社区大小
 
-#### Step 4: 进入演化链模块
-- 点击右上角 **"Evolution Chains"** 按钮 🔗
-- 自动跳转到演化链页面
+#### Step 4: 进入社区连接探索器
+- 点击右上角 **"Community Connection Explorer"** 按钮 🔗
+- 自动跳转到社区连接关系探索器
 
 ---
 
-### 模块 2: 演化链可视化
+### 模块 2: 社区连接关系探索器
 
-#### Step 1: 上传演化链数据
-- 在演化链页面点击 **"Choose JSON File"**
-- 选择你的 `weighted_chain_details_level1.json` 文件
-- 等待数据加载
+这是一个**渐进式展开**的交互式工具，用于探索相邻年份间社区的连接关系。
 
-#### Step 2: 探索演化
-- **查看链**: 时间轴上显示所有演化链
-- **过滤链**: 按长度、得分、年份过滤
-- **切换布局**: Timeline / Vertical Lanes / Force-Directed
-- **点击节点**: 查看该年份社区的详细属性
+#### 功能特性
+- ✅ **渐进式展开**: 点击社区逐年展开其连接关系
+- ✅ **详细属性展示**: 右键点击社区查看详细属性（州分布、产业分布等）
+- ✅ **过滤与统计**: 实时统计显示节点数、边数、年份范围
+- ✅ **灵活导航**: 支持缩放、拖拽、历史记录
 
-#### Step 3: 分析社区属性
-点击任何节点查看：
-- 📊 基本信息 (年份、规模、类型)
-- 👥 节点组成 (核心/新节点比例)
-- 📍 州分布 (Top 3)
-- 🏙️ 都市区分布 (Top 5)
-- 🏭 NAICS 2位/4位行业分布
-- 💼 Top 10职位角色
+#### Step 1: 准备数据
 
-#### Step 4: 返回主页面
-- 点击左上角 **"Back to Community View"** 按钮 ←
+使用 `prepare_community_connections_with_attributes.py` 脚本从社区检测结果生成可视化数据：
+
+```python
+python prepare_community_connections_with_attributes.py
+```
+
+**所需输入文件**:
+1. 相似度矩阵: `./similarity_matrices_complete/similarity_matrix_level1_complete.parquet`
+2. 社区检测结果目录: `./workforce_community_results_adaptive_4d/`
+   - 子目录格式: `results_2023_2024/`
+   - 每个子目录包含该年度的社区检测结果CSV
+
+**输出文件**:
+- `community_connections_with_attributes.json` - 包含节点、边和详细属性的完整数据
+
+#### Step 2: 加载数据
+- 打开 `explorers/community-connection-explorer.html`
+- 点击 **"加载数据"** 按钮
+- 选择生成的 `community_connections_with_attributes.json` 文件
+
+#### Step 3: 探索社区连接
+- **初始视图**: 显示起始年份的所有社区
+- **展开连接**: 左键点击社区，展开下一年的连接
+- **查看属性**: 右键点击社区，查看详细属性分布
+- **收起分支**: 再次左键点击已展开的社区可收起
+
+#### Step 4: 查看详细属性
+
+右键点击任何社区节点，可查看：
+- 📊 **基本信息**: 年份、社区编号、规模、劳动力总数
+- 🗺️ **Top 3 州分布**: 州名、数量、百分比
+- 🏙️ **Top 5 都市区分布**: 都市区、数量、百分比
+- 🏭 **Top 3/5 NAICS产业分布**: 2位/4位代码、数量、百分比
+- 🏷️ **Top 3 RICS分类**: K50/K200分类及分布
+- 🏢 **Top 10 公司**: 公司名称、数量、百分比
 
 ---
 
-## 💡 典型工作流程
+## 📊 数据格式要求
 
-### 工作流 A: 从社区到演化
-```
-1. 主页面上传某年社区检测结果 (如2020年)
-2. 探索该年的社区结构
-3. 点击"Evolution Chains"按钮
-4. 上传演化链数据
-5. 找到包含该年的演化链
-6. 查看该社区的历史和未来演化
+### 社区检测结果CSV
+
+#### 必需列
+```csv
+geo_rcid,community_level1,community_level2,...
 ```
 
-### 工作流 B: 从演化到社区
-```
-1. 直接打开evolution-chain.html
-2. 上传演化链数据
-3. 识别感兴趣的演化模式
-4. 记录特定年份的社区ID
-5. 返回主页面
-6. 上传对应年份的社区数据
-7. 深入分析该社区的详细结构
+- `geo_rcid`: 节点唯一ID（地理位置编码）
+- `community_level1`: 第1级社区ID
+- `community_level2/3/...`: 更细粒度的社区层级（可选，支持动态检测）
+
+#### 推荐属性列（用于详细分析）
+```csv
+rcid,company_name,real_state,real_metro_area,naics_code,rics_k50,rics_k200,workforce_total_people
 ```
 
----
-
-## 📊 数据文件要求
-
-### 社区检测结果 CSV
-**列要求**:
-- `geo_rcid`: 节点ID (必需)
-- `community_level1`, `community_level2`, ... : 社区层级 (必需)
 - `rcid`: 原始公司ID
 - `company_name`: 公司名称
-- `real_state`: 州
-- `real_metro_area`: 都市区
-- `naics_code`: NAICS行业代码
+- `real_state`: 州（如 California）
+- `real_metro_area`: 都市区（如 San Francisco）
+- `naics_code`: NAICS产业代码
 - `rics_k50`, `rics_k200`, `rics_k400`: RICS分类
-- 其他属性...
+- `workforce_total_people`: 劳动力总人数
 
-**示例行**:
+#### 示例行
 ```csv
-geo_rcid,community_level1,community_level2,rcid,company_name,real_state,naics_code
-RC123_CA_SanFrancisco,1,1.5,RC123,Tech Corp,California,5112
+geo_rcid,community_level1,rcid,company_name,real_state,real_metro_area,naics_code,workforce_total_people
+RC123_CA_SF,1,RC123,Tech Corp,California,San Francisco,5112,500
+RC456_NY_NYC,1,RC456,Finance Inc,New York,New York City,5221,800
 ```
 
-### 演化链 JSON
-**结构要求**:
+---
+
+### 相似度矩阵（Parquet格式）
+
+由社区演化分析生成，包含：
+
+**必需列**:
+- `year1`, `year2`: 两个年份
+- `community1`, `community2`: 社区ID
+- `jaccard`: Jaccard相似度
+- `retention_forward`, `retention_backward`: 保留率
+- `overlap_size`, `union_size`: 重叠和并集大小
+- `size1`, `size2`: 社区大小
+- `growth_rate`: 增长率
+- `year_gap`: 年份间隔
+
+**可选列**（属性相似度）:
+- `naics_cosine_similarity`, `naics_overlap_index`
+- `state_cosine_similarity`, `state_overlap_index`
+- `metro_cosine_similarity`, `metro_overlap_index`
+
+---
+
+### 输出JSON格式
+
+`prepare_community_connections_with_attributes.py` 生成的JSON文件结构：
+
 ```json
-[
-  {
-    "stable_id": "S0",
-    "length": 10,
-    "score": 0.75,
-    "communities": [
-      {
-        "year": 2000,
-        "community_id": "1",
-        "attributes": {
-          "size": 150,
-          "top3_states": [{"value": "CA", "count": 100, "percentage": 66.7}],
-          "top5_metros": [...],
-          "top3_naics_2digit": [...],
-          "top5_naics_4digit": [...],
-          "top10_roles": [...]
-        },
-        "node_composition": {
-          "type": "established",
-          "core_node_ratio": 0.8,
-          "new_node_ratio": 0.1,
-          "avg_node_weight": 0.75
-        }
+{
+  "nodes": [
+    {
+      "id": "2023_1",
+      "year": 2023,
+      "community": "1",
+      "size": 150,
+      "out_degree": 3,
+      "in_degree": 2,
+      "total_degree": 5,
+      "attributes": {
+        "total_workforce": 12500,
+        "top3_states": [
+          {"value": "California", "count": 100, "percentage": 66.67}
+        ],
+        "top5_metros": [...],
+        "top3_naics_2digit": [...],
+        "top5_naics_4digit": [...],
+        "top3_rics_k50": [...],
+        "top3_rics_k200": [...],
+        "top10_companies": [...]
       }
-    ]
+    }
+  ],
+  "links": [
+    {
+      "source": "2023_1",
+      "target": "2024_2",
+      "jaccard": 0.45,
+      "retention_forward": 0.62,
+      "retention_backward": 0.38,
+      "overlap_size": 85,
+      "union_size": 200,
+      "size1": 150,
+      "size2": 135,
+      "growth_rate": -0.10,
+      "year_gap": 1
+    }
+  ],
+  "stats": {
+    "total_nodes": 250,
+    "total_links": 450,
+    "attributes_loaded": 250,
+    "year_range": {"min": 2023, "max": 2027}
   }
-]
+}
 ```
 
 ---
 
-## 🎨 界面特性
+## 🔧 数据准备脚本使用
 
-### 主页面特性
-- ✅ 自适应层级展示 (支持任意深度)
-- ✅ 三种布局模式 (树形/径向/分层)
-- ✅ 动态节点间距，防止重叠
-- ✅ 碰撞检测
-- ✅ 网络视图 (双击叶子节点)
-- ✅ 组成分析面板
-- ✅ 自动适配视图
+### 基本用法
 
-### 演化链页面特性
-- ✅ 时间轴可视化
-- ✅ 多种布局模式
-- ✅ 链长度过滤和排序
-- ✅ 详细的社区属性展示
-- ✅ 交互式链列表侧边栏
-- ✅ 实时统计面板
-- ✅ 颜色编码 (按链长度)
+```python
+from prepare_community_connections_with_attributes import ConnectionDataPreparerWithAttributes
 
----
+# 配置路径
+preparer = ConnectionDataPreparerWithAttributes(
+    similarity_file="./similarity_matrices_complete/similarity_matrix_level1_complete.parquet",
+    community_data_dir="./workforce_community_results_adaptive_4d",
+    output_file="./community_connections_with_attributes.json"
+)
 
-## 🔗 模块切换
+# 运行
+data = preparer.run()
+```
 
-### 从主页面 → 演化链
-- **按钮位置**: 右上角
-- **按钮图标**: 🔗 Evolution Chains
-- **操作**: 单击即可跳转
+### 目录结构要求
 
-### 从演化链 → 主页面
-- **按钮位置**: 左上角
-- **按钮图标**: ← Back to Community View
-- **操作**: 单击即可返回
+社区检测结果目录结构（支持嵌套）：
 
----
+```
+workforce_community_results_adaptive_4d/
+├── results_2023_2024/           # 2023年度数据
+│   └── community_results.csv
+├── results_2024_2025/           # 2024年度数据
+│   └── community_results.csv
+└── results_2025_2026/           # 2025年度数据
+    └── community_results.csv
+```
 
-## 🎯 使用建议
+**也支持扁平结构（向后兼容）**:
+```
+community_detection_results/
+├── workforce_geo_community_2023_results.csv
+├── workforce_geo_community_2024_results.csv
+└── workforce_geo_community_2025_results.csv
+```
 
-### 对于单年分析
-1. 使用主页面的社区检测可视化
-2. 深入探索层级结构
-3. 使用网络视图查看连接
+### 调整过滤阈值
 
-### 对于时间演化分析
-1. 使用演化链页面
-2. 过滤出长期稳定的链
-3. 追踪属性变化
+```python
+# 创建准备器后，可以调整过滤阈值
+preparer.min_overlap_size = 10              # 最小重叠节点数
+preparer.min_retention_forward = 0.10       # 最小前向保留率
+preparer.min_retention_backward = 0.10      # 最小后向保留率
+preparer.min_jaccard = 0.05                 # 最小Jaccard相似度
 
-### 对于综合分析
-1. 在演化链中识别关键转折点
-2. 返回主页面查看转折年份的详细结构
-3. 结合两个视角理解演化机制
-
----
-
-## 💻 技术要求
-
-### 浏览器
-- **推荐**: Chrome 90+, Firefox 88+, Edge 90+
-- **JavaScript**: 必须启用
-- **屏幕**: 1920x1080 或更高
-
-### 文件大小
-- **社区CSV**: 通常 < 50MB
-- **边数据CSV**: 通常 < 100MB  
-- **演化链JSON**: 通常 < 20MB
-
-### 性能建议
-- **社区数量**: 显示 < 200 个社区效果最佳
-- **演化链数量**: 显示 < 100 条链效果最佳
-- **层级深度**: 6层以内效果最佳
+# 运行
+data = preparer.run()
+```
 
 ---
 
-## 🐛 常见问题
+## 🎨 可视化特性
 
-### Q: 上传文件后没有反应？
-**A**: 
-1. 检查浏览器控制台 (F12) 是否有错误
-2. 确认文件格式正确 (CSV/JSON)
-3. 检查文件是否包含必需的列
+### 社区检测可视化 (index.html)
 
-### Q: 节点重叠无法点击？
-**A**: 
-1. 使用 "Fit to View" 按钮
-2. 切换到径向布局
-3. 减少显示的节点数量
+- ✅ 支持动态层级深度检测
+- ✅ 多种布局模式（圆形、力导向、树形）
+- ✅ 按NAICS产业、州、都市区等属性着色
+- ✅ 交互式展开/折叠
+- ✅ 右键菜单详情面板
+- ✅ 双击进入网络视图
 
-### Q: 演化链加载很慢？
-**A**: 
-1. 减少 "Max Chains to Display" 数量
-2. 使用长度过滤器
-3. 确保JSON文件 < 50MB
+### 社区连接探索器 (explorers/)
 
-### Q: 如何找到特定社区的演化？
-**A**: 
-1. 在主页面记住社区ID
-2. 进入演化链页面
-3. 使用侧边栏搜索对应的链
-4. 查看包含该社区的年份节点
+- ✅ 渐进式展开（逐年探索，而非一次性显示全部）
+- ✅ 节点颜色编码：
+  - 蓝色 = 已展开社区
+  - 灰色 = 未展开社区
+  - 红色 = 叶子社区（无后继）
+- ✅ 边粗细：根据Jaccard相似度调整
+- ✅ 详细属性面板：支持新格式（top3_states等）
+- ✅ 统计信息：实时显示节点数、边数、年份范围
+- ✅ 历史记录：支持导航回溯
+
+---
+
+## 💡 使用技巧
+
+### 社区检测可视化
+1. 先以小的最小社区大小过滤（如5），快速了解整体结构
+2. 使用颜色编码按产业或地理分组识别模式
+3. 右键点击节点查看详细组成
+4. 双击叶子节点进入网络视图查看内部连接
+
+### 社区连接探索器
+1. 从起始年份的大社区开始探索
+2. 逐年展开，观察社区演化路径
+3. 使用右键菜单对比不同年份社区的属性变化
+4. 关注高Jaccard相似度的连接（粗边）
+5. 收起不感兴趣的分支，保持视图清晰
 
 ---
 
 ## 📖 相关文档
 
-- **社区连接探索器**: 参考 `explorers/COMMUNITY_CONNECTION_EXPLORER.md`
-- **D3.js文档**: https://d3js.org
+- **社区连接探索器详细文档**: `explorers/COMMUNITY_CONNECTION_EXPLORER.md`
+- **示例数据**: `explorers/sample_community_connections.json`
 
 ---
 
-## 🛠️ 辅助探索工具
+## 🔄 工作流程图
 
-除了两个核心模块，本平台还提供三个辅助探索工具（位于 `explorers/` 文件夹）：
-
-### 1. 社区连接关系探索器
-- **文件**: `explorers/community-connection-explorer.html`
-- **功能**: 渐进式展开相邻年份社区的连接关系
-- **用途**: 观察社区演化链构建的中间结果
-
-### 2. 渐进式演化链可视化
-- **文件**: `explorers/evolution-chain-progressive.html`
-- **功能**: 逐步展开演化链，避免一次性显示过多数据
-- **用途**: 适合大规模演化链数据的探索
-
-### 3. 演化网络探索器
-- **文件**: `explorers/evolution-network-explorer.html`
-- **功能**: 网络视图下的演化关系探索
-- **用途**: 适合复杂网络结构的可视化分析
-
-详细使用说明请参考 `explorers/COMMUNITY_CONNECTION_EXPLORER.md`
-
----
-
-## 🎉 快速开始
-
-```bash
-# 1. 克隆或下载项目
-git clone <repository-url>
-cd labor-mobility-visualization
-
-# 2. 打开主页面
-# 直接在浏览器中打开 index.html
-# 或使用本地服务器：
-# python -m http.server 8000
-# 然后访问 http://localhost:8000
-
-# 3. 上传社区检测结果
-# 点击"Choose Community CSV File"
-
-# 4. 探索演化
-# 点击"Evolution Chains"按钮
-# 上传 weighted_chain_details_level1.json
+```
+┌──────────────────────────────────────┐
+│  社区检测结果CSV（多年份）            │
+│  + 相似度矩阵（parquet）              │
+└─────────────┬────────────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────┐
+   │ prepare_community_           │
+   │ connections_with_            │
+   │ attributes.py                │
+   │                              │
+   │ • 提取社区属性               │
+   │ • 计算连接关系               │
+   │ • 生成JSON                   │
+   └──────────┬───────────────────┘
+              │
+              ▼
+   ┌──────────────────────────────────┐
+   │ community_connections_with_      │
+   │ attributes.json                  │
+   └──────────┬───────────────────────┘
+              │
+      ┌───────┴────────┐
+      │                │
+      ▼                ▼
+┌──────────┐    ┌────────────────┐
+│ index.   │    │ explorers/     │
+│ html     │    │ community-     │
+│          │    │ connection-    │
+│社区层级  │    │ explorer.html  │
+│可视化    │    │                │
+│          │    │渐进式展开探索  │
+└──────────┘    └────────────────┘
 ```
 
 ---
 
-## 📋 项目优化说明
+## 🛠️ 技术栈
 
-本项目已进行清理和优化：
-- ✅ 移除了重复的文件夹和zip压缩包
-- ✅ 移除了混杂的Python脚本文件
-- ✅ 将辅助工具整理到 `explorers/` 文件夹
-- ✅ 优化了文件结构，使核心功能更清晰
-- ✅ 保留了所有功能，无功能损失
+**前端**:
+- D3.js v7 - 数据驱动可视化
+- HTML5 + CSS3
+- JavaScript (ES6+)
 
-**祝你分析愉快!** 🚀
+**后端/数据**:
+- Python 3 - 数据处理
+- Pandas - 数据分析
+- Parquet - 相似度矩阵存储
+- JSON - 可视化数据格式
+
+---
+
+## 📝 版本说明
+
+**当前架构**:
+- ✅ 主模块：社区检测可视化 (index.html)
+- ✅ 辅助模块：社区连接关系探索器 (explorers/community-connection-explorer.html)
+- ✅ 数据准备：属性提取和整合脚本
+
+**已移除的模块**:
+- ❌ evolution-chain.html（已被community-connection-explorer.html取代）
+- ❌ 相关的演化链JavaScript文件
+
+---
+
+## 🚀 快速开始
+
+1. **准备数据**:
+   ```bash
+   python prepare_community_connections_with_attributes.py
+   ```
+
+2. **打开主页面**:
+   - 浏览器打开 `index.html`
+   - 上传社区检测结果CSV
+
+3. **探索社区连接**:
+   - 点击右上角 "Community Connection Explorer" 按钮
+   - 加载生成的JSON文件
+   - 开始渐进式探索！
+
+---
+
+**Enjoy visualizing! 🎉**

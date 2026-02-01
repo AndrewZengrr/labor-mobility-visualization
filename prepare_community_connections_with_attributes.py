@@ -59,6 +59,10 @@ class ConnectionDataPreparerWithAttributes:
         """
         加载指定年份的社区检测结果
 
+        支持两种目录结构：
+        1. 扁平结构：community_data_dir/workforce_geo_community_YYYY_results.csv
+        2. 嵌套结构：community_data_dir/results_YYYY_YYYY/*.csv
+
         Parameters:
         -----------
         year : int
@@ -68,15 +72,48 @@ class ConnectionDataPreparerWithAttributes:
         --------
         pd.DataFrame or None
         """
-        # 尝试多种可能的文件命名模式
-        patterns = [
+        # 方法1：尝试嵌套目录结构（优先）
+        # 格式：./workforce_community_results_adaptive_4d/results_2023_2024/xxx.csv
+        year_folder_patterns = [
+            f"results_{year}_{year+1}",  # results_2023_2024
+            f"results_{year-1}_{year}",  # results_2022_2023（如果数据年度是跨年的）
+            f"results_{year}",           # results_2023
+            f"{year}_{year+1}",          # 2023_2024
+            f"{year}"                    # 2023
+        ]
+
+        for folder_pattern in year_folder_patterns:
+            year_folder = self.community_data_dir / folder_pattern
+            if year_folder.exists() and year_folder.is_dir():
+                # 在年份文件夹中查找CSV文件
+                csv_files = list(year_folder.glob("*.csv"))
+                if csv_files:
+                    # 优先选择包含关键词的文件
+                    priority_keywords = ['community', 'result', 'detection']
+                    for csv_file in csv_files:
+                        if any(kw in csv_file.name.lower() for kw in priority_keywords):
+                            logging.info(f"Loading community data for year {year} from {csv_file}")
+                            df = pd.read_csv(csv_file)
+                            logging.info(f"  Loaded {len(df):,} records from {csv_file.name}")
+                            return df
+
+                    # 如果没有找到包含关键词的，使用第一个CSV文件
+                    csv_file = csv_files[0]
+                    logging.info(f"Loading community data for year {year} from {csv_file}")
+                    df = pd.read_csv(csv_file)
+                    logging.info(f"  Loaded {len(df):,} records from {csv_file.name}")
+                    return df
+
+        # 方法2：尝试扁平目录结构（向后兼容）
+        file_patterns = [
             f"workforce_geo_community_{year}_results.csv",
             f"community_{year}_results.csv",
             f"community_detection_{year}.csv",
-            f"{year}_community_results.csv"
+            f"{year}_community_results.csv",
+            f"results_{year}.csv"
         ]
 
-        for pattern in patterns:
+        for pattern in file_patterns:
             file_path = self.community_data_dir / pattern
             if file_path.exists():
                 logging.info(f"Loading community data for year {year} from {file_path}")
@@ -85,6 +122,9 @@ class ConnectionDataPreparerWithAttributes:
                 return df
 
         logging.warning(f"No community data file found for year {year}")
+        logging.warning(f"  Searched in: {self.community_data_dir}")
+        logging.warning(f"  Year folder patterns: {year_folder_patterns}")
+        logging.warning(f"  File patterns: {file_patterns}")
         return None
 
     def extract_community_attributes(self, df, community_id, level='level1'):
@@ -553,7 +593,7 @@ def main():
     """主函数"""
     # 配置参数
     similarity_file = "./similarity_matrices_complete/similarity_matrix_level1_complete.parquet"
-    community_data_dir = "./community_detection_results"  # 包含各年份社区检测结果CSV的目录
+    community_data_dir = "./workforce_community_results_adaptive_4d"  # 社区检测结果目录（支持嵌套的results_YYYY_YYYY文件夹）
     output_file = "./community_connections_with_attributes.json"
 
     # 创建准备器

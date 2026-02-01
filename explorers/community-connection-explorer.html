@@ -886,10 +886,12 @@
 
         function showCommunityProperties(node) {
             const panel = d3.select('#detailsPanel');
-            const properties = communityProperties[node.id];
+            const legacyProperties = communityProperties[node.id];  // 旧格式（state_dist, metro_dist等）
+            const newAttributes = node.attributes;  // 新格式（top3_states, top5_metros等）
 
-            let html = `<h3>社区属性 - ${node.id}</h3>`;
+            let html = `<h3>📊 社区属性 - ${node.id}</h3>`;
 
+            // 基本信息
             html += `
                 <div class="detail-item">
                     <div class="detail-label">年份</div>
@@ -904,11 +906,107 @@
                     <div class="detail-value">${node.size || 'N/A'}</div>
                 </div>`;
 
-            if (properties) {
+            // 显示新格式属性（优先）
+            if (newAttributes) {
+                // 劳动力总数
+                if (newAttributes.total_workforce) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">总劳动力</div>
+                        <div class="detail-value">${newAttributes.total_workforce.toLocaleString()}</div>
+                    </div>`;
+                }
+
+                // 显示Top 3州分布
+                if (newAttributes.top3_states && newAttributes.top3_states.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🗺️ Top 3 州分布</h3>';
+                    newAttributes.top3_states.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 5都市区分布
+                if (newAttributes.top5_metros && newAttributes.top5_metros.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🏙️ Top 5 都市区分布</h3>';
+                    newAttributes.top5_metros.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 3 NAICS 2位代码
+                if (newAttributes.top3_naics_2digit && newAttributes.top3_naics_2digit.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🏭 Top 3 产业 (NAICS 2位)</h3>';
+                    newAttributes.top3_naics_2digit.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">NAICS ${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 5 NAICS 4位代码
+                if (newAttributes.top5_naics_4digit && newAttributes.top5_naics_4digit.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">📋 Top 5 产业 (NAICS 4位)</h3>';
+                    newAttributes.top5_naics_4digit.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">NAICS ${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 3 RICS K50
+                if (newAttributes.top3_rics_k50 && newAttributes.top3_rics_k50.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🏷️ Top 3 RICS K50</h3>';
+                    newAttributes.top3_rics_k50.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 3 RICS K200
+                if (newAttributes.top3_rics_k200 && newAttributes.top3_rics_k200.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🏷️ Top 3 RICS K200</h3>';
+                    newAttributes.top3_rics_k200.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 显示Top 10公司
+                if (newAttributes.top10_companies && newAttributes.top10_companies.length > 0) {
+                    html += '<h3 style="margin-top: 15px;">🏢 Top 10 公司</h3>';
+                    newAttributes.top10_companies.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage.toFixed(1)}%)</div>
+                        </div>`;
+                    });
+                }
+            }
+            // 显示旧格式属性（向后兼容）
+            else if (legacyProperties) {
                 // 显示State分布
-                if (properties.state_dist) {
-                    html += '<h3 style="margin-top: 15px;">地理位置分布 (State)</h3>';
-                    const stateItems = Object.entries(properties.state_dist)
+                if (legacyProperties.state_dist) {
+                    html += '<h3 style="margin-top: 15px;">🗺️ 地理位置分布 (State)</h3>';
+                    const stateItems = Object.entries(legacyProperties.state_dist)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 10);
 
@@ -923,9 +1021,9 @@
                 }
 
                 // 显示Metro分布
-                if (properties.metro_dist) {
-                    html += '<h3 style="margin-top: 15px;">大都市区分布 (Metro)</h3>';
-                    const metroItems = Object.entries(properties.metro_dist)
+                if (legacyProperties.metro_dist) {
+                    html += '<h3 style="margin-top: 15px;">🏙️ 大都市区分布 (Metro)</h3>';
+                    const metroItems = Object.entries(legacyProperties.metro_dist)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 10);
 
@@ -940,9 +1038,9 @@
                 }
 
                 // 显示产业分布
-                if (properties.naics_dist) {
-                    html += '<h3 style="margin-top: 15px;">产业分布 (NAICS)</h3>';
-                    const naicsItems = Object.entries(properties.naics_dist)
+                if (legacyProperties.naics_dist) {
+                    html += '<h3 style="margin-top: 15px;">🏭 产业分布 (NAICS)</h3>';
+                    const naicsItems = Object.entries(legacyProperties.naics_dist)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 10);
 
@@ -955,13 +1053,14 @@
                         </div>`;
                     });
                 }
-            } else {
-                // 如果没有详细属性数据，显示基本信息
-                html += '<div class="no-selection">未加载详细属性数据</div>';
+            }
+            // 如果没有任何详细属性数据
+            else {
+                html += '<div class="no-selection" style="margin-top: 15px; padding: 15px; background: #2a3555; border-radius: 6px;">ℹ️ 未加载详细属性数据</div>';
 
                 if (node.dominant_state) {
                     html += `
-                    <div class="detail-item">
+                    <div class="detail-item" style="margin-top: 10px;">
                         <div class="detail-label">主导州</div>
                         <div class="detail-value">${node.dominant_state}</div>
                     </div>`;
