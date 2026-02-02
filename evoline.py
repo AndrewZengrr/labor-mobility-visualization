@@ -1,18 +1,19 @@
 """
-准备社区连接可视化数据 - 包含详细属性版本（支持多层级）
-从相似度矩阵生成可视化所需的JSON格式，并从社区检测结果中提取详细属性
+准备社区连接可视化数据 - 包含重叠节点属性分布版本
+从相似度矩阵生成可视化所需的JSON格式，提取社区属性和重叠节点的属性分布
 """
 import pandas as pd
 import json
 import logging
 from pathlib import Path
 from collections import defaultdict, Counter
+import numpy as np
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-class ConnectionDataPreparerWithAttributes:
-    """准备社区连接可视化数据 - 包含详细社区属性（支持多层级）"""
+class ConnectionDataPreparerWithOverlapAttributes:
+    """准备社区连接可视化数据 - 包含重叠节点属性分布"""
 
     def __init__(self, similarity_file, community_data_dir, level=1, output_file=None):
         """
@@ -22,7 +23,6 @@ class ConnectionDataPreparerWithAttributes:
             相似度矩阵文件路径（.parquet格式）
         community_data_dir : str
             社区检测结果CSV文件所在目录
-            预期文件命名格式: workforce_geo_community_YYYY_results.csv
         level : int
             社区层级 (1, 2, 3, ...)
         output_file : str, optional
@@ -36,8 +36,7 @@ class ConnectionDataPreparerWithAttributes:
         if output_file:
             self.output_file = Path(output_file)
         else:
-            # 根据层级自动生成输出文件名
-            self.output_file = self.similarity_file.parent / f"community_connections_level{level}_with_attributes.json"
+            self.output_file = self.similarity_file.parent / f"community_connections_level{level}_with_overlap.json"
 
         # 过滤阈值
         self.min_overlap_size = 20
@@ -45,120 +44,111 @@ class ConnectionDataPreparerWithAttributes:
         self.min_retention_backward = 0.03
         self.min_jaccard = 0.01
 
-        # 社区属性缓存
+        # 缓存
         self.community_attributes = {}  # {(year, community_id): attributes_dict}
+        self.year_data_cache = {}  # {year: DataFrame}
 
+    # ==================== 数据加载 ====================
+    
     def load_similarity_matrix(self):
         """加载相似度矩阵"""
         logging.info(f"Loading similarity matrix from {self.similarity_file}")
-
+        
         if not self.similarity_file.exists():
             raise FileNotFoundError(f"Similarity matrix not found: {self.similarity_file}")
-
+        
         df = pd.read_parquet(self.similarity_file)
         logging.info(f"Loaded {len(df):,} similarity pairs")
-
+        
         return df
 
     def load_community_data_for_year(self, year):
         """
-        加载指定年份的社区检测结果
-
+        加载指定年份的社区检测结果（带缓存）
+        
         支持两种目录结构：
-        1. 扁平结构：community_data_dir/workforce_geo_community_YYYY_results.csv
-        2. 嵌套结构：community_data_dir/results_YYYY_YYYY/*.csv
-
-        Parameters:
-        -----------
-        year : int
-            年份
-
-        Returns:
-        --------
-        pd.DataFrame or None
+        1. 嵌套结构：community_data_dir/results_YYYY_YYYY/*.csv
+        2. 扁平结构：community_data_dir/workforce_geo_community_YYYY_results.csv
         """
+        # 如果已缓存，直接返回
+        if year in self.year_data_cache:
+            return self.year_data_cache[year]
+        
         # 方法1：尝试嵌套目录结构（优先）
-        # 格式：./workforce_community_results_adaptive_4d/results_2023_2024/xxx.csv
         year_folder_patterns = [
-            f"results_{year}_{year+1}",  # results_2023_2024
-            f"results_{year-1}_{year}",  # results_2022_2023（如果数据年度是跨年的）
-            f"results_{year}",           # results_2023
-            f"{year}_{year+1}",          # 2023_2024
-            f"{year}"                    # 2023
+            f"results_{year}_{year+1}",
+            f"results_{year-1}_{year}",
+            f"results_{year}",
+            f"{year}_{year+1}",
+            f"{year}"
         ]
 
         for folder_pattern in year_folder_patterns:
             year_folder = self.community_data_dir / folder_pattern
             if year_folder.exists() and year_folder.is_dir():
-                # 在年份文件夹中查找CSV文件
                 csv_files = list(year_folder.glob("*.csv"))
+                parquet_files = list(year_folder.glob("*.parquet"))
+                
+                # 优先使用parquet格式
+                if parquet_files:
+                    for pq_file in parquet_files:
+                        if 'result' in pq_file.name.lower():
+                            logging.info(f"Loading community data for year {year} from {pq_file}")
+                            df = pd.read_parquet(pq_file)
+                            self.year_data_cache[year] = df
+                            return df
+                    # 没有找到包含'result'的，使用第一个
+                    df = pd.read_parquet(parquet_files[0])
+                    self.year_data_cache[year] = df
+                    return df
+                
+                # 使用CSV
                 if csv_files:
-                    # 优先选择包含关键词的文件
-                    priority_keywords = ['result']
                     for csv_file in csv_files:
-                        if any(kw in csv_file.name.lower() for kw in priority_keywords):
+                        if 'result' in csv_file.name.lower():
                             logging.info(f"Loading community data for year {year} from {csv_file}")
                             df = pd.read_csv(csv_file)
-                            logging.info(f"  Loaded {len(df):,} records from {csv_file.name}")
+                            self.year_data_cache[year] = df
                             return df
-
-                    # 如果没有找到包含关键词的，使用第一个CSV文件
-                    csv_file = csv_files[0]
-                    logging.info(f"Loading community data for year {year} from {csv_file}")
-                    df = pd.read_csv(csv_file)
-                    logging.info(f"  Loaded {len(df):,} records from {csv_file.name}")
+                    df = pd.read_csv(csv_files[0])
+                    self.year_data_cache[year] = df
                     return df
 
-        # 方法2：尝试扁平目录结构（向后兼容）
+        # 方法2：尝试扁平目录结构
         file_patterns = [
+            f"workforce_geo_community_{year}_results.parquet",
             f"workforce_geo_community_{year}_results.csv",
-            f"community_{year}_results.csv",
-            f"community_detection_{year}.csv",
-            f"{year}_community_results.csv",
-            f"results_{year}.csv"
+            f"community_{year}_results.parquet",
+            f"community_{year}_results.csv"
         ]
 
         for pattern in file_patterns:
             file_path = self.community_data_dir / pattern
             if file_path.exists():
                 logging.info(f"Loading community data for year {year} from {file_path}")
-                df = pd.read_csv(file_path)
-                logging.info(f"  Loaded {len(df):,} records")
+                if pattern.endswith('.parquet'):
+                    df = pd.read_parquet(file_path)
+                else:
+                    df = pd.read_csv(file_path)
+                self.year_data_cache[year] = df
                 return df
 
         logging.warning(f"No community data file found for year {year}")
-        logging.warning(f"  Searched in: {self.community_data_dir}")
-        logging.warning(f"  Year folder patterns: {year_folder_patterns}")
-        logging.warning(f"  File patterns: {file_patterns}")
         return None
 
+    # ==================== 社区属性提取 ====================
+    
     def extract_community_attributes(self, df, community_id):
-        """
-        从社区检测结果中提取指定社区的属性（使用当前层级）
-
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            社区检测结果数据
-        community_id : str
-            社区ID
-
-        Returns:
-        --------
-        dict: 包含社区详细属性的字典
-        """
+        """从社区检测结果中提取指定社区的属性"""
         if self.level_column not in df.columns:
             logging.warning(f"Column {self.level_column} not found in dataframe")
             return self._get_empty_attributes()
 
-        # 筛选属于该社区的所有记录
         community_df = df[df[self.level_column].astype(str) == str(community_id)]
 
         if len(community_df) == 0:
-            logging.warning(f"No records found for community {community_id} at level {self.level}")
             return self._get_empty_attributes()
 
-        # 计算各种属性分布
         attributes = {
             'size': len(community_df),
             'total_workforce': 0,
@@ -184,12 +174,10 @@ class ConnectionDataPreparerWithAttributes:
 
         # NAICS产业分布
         if 'naics_code' in community_df.columns:
-            # 2位NAICS代码
             naics_2digit = community_df['naics_code'].astype(str).str[:2]
             naics_2digit_counts = naics_2digit.value_counts()
             attributes['naics_2digit'] = self._format_distribution(naics_2digit_counts)
 
-            # 4位NAICS代码
             naics_4digit = community_df['naics_code'].astype(str).str[:4]
             naics_4digit_counts = naics_4digit.value_counts()
             attributes['naics_4digit'] = self._format_distribution(naics_4digit_counts)
@@ -205,27 +193,181 @@ class ConnectionDataPreparerWithAttributes:
             company_counts = community_df['company_name'].value_counts()
             attributes['top_companies'] = self._format_distribution(company_counts, top_n=10)
 
-        # 劳动力总数
-        if 'workforce_total_people' in community_df.columns:
-            attributes['total_workforce'] = int(community_df['workforce_total_people'].sum())
-
         return attributes
 
-    def _format_distribution(self, counts, top_n=None):
+    # ==================== 重叠节点属性提取（核心新增功能）====================
+    
+    def extract_overlap_attributes(self, year1, comm1, year2, comm2):
         """
-        将计数转换为标准分布格式
-
+        提取两个社区之间重叠节点的属性分布
+        
         Parameters:
         -----------
-        counts : pd.Series
-            计数数据
-        top_n : int, optional
-            只保留前N个
+        year1, comm1 : int, str
+            第一个社区的年份和ID
+        year2, comm2 : int, str
+            第二个社区的年份和ID
+            
+        Returns:
+        --------
+        dict: 重叠节点的属性分布
+        """
+        # 加载两个年份的数据
+        df1 = self.load_community_data_for_year(year1)
+        df2 = self.load_community_data_for_year(year2)
+        
+        if df1 is None or df2 is None:
+            return self._get_empty_overlap_attributes()
+        
+        # 检查层级列是否存在
+        if self.level_column not in df1.columns or self.level_column not in df2.columns:
+            return self._get_empty_overlap_attributes()
+        
+        # 获取两个社区的节点集合
+        comm1_df = df1[df1[self.level_column].astype(str) == str(comm1)]
+        comm2_df = df2[df2[self.level_column].astype(str) == str(comm2)]
+        
+        if len(comm1_df) == 0 or len(comm2_df) == 0:
+            return self._get_empty_overlap_attributes()
+        
+        # 找到重叠节点（基于geo_rcid）
+        nodes1 = set(comm1_df['geo_rcid'].astype(str))
+        nodes2 = set(comm2_df['geo_rcid'].astype(str))
+        overlap_nodes = nodes1 & nodes2
+        
+        if not overlap_nodes:
+            return self._get_empty_overlap_attributes()
+        
+        # 提取重叠节点在year1的属性（作为"离职前"的状态）
+        overlap_df = comm1_df[comm1_df['geo_rcid'].astype(str).isin(overlap_nodes)]
+        
+        # 统计各项属性分布
+        attributes = {
+            'overlap_size': len(overlap_nodes),
+            'overlap_percentage_in_comm1': len(overlap_nodes) / len(nodes1) * 100 if len(nodes1) > 0 else 0,
+            'overlap_percentage_in_comm2': len(overlap_nodes) / len(nodes2) * 100 if len(nodes2) > 0 else 0
+        }
+        
+        # NAICS产业分布
+        if 'naics_code' in overlap_df.columns:
+            # 2位NAICS
+            naics_2digit = overlap_df['naics_code'].astype(str).str[:2]
+            naics_2digit_clean = naics_2digit[
+                (naics_2digit != 'un') & 
+                (naics_2digit != 'na') & 
+                (naics_2digit.str.len() >= 2)
+            ]
+            if len(naics_2digit_clean) > 0:
+                attributes['naics_2digit'] = self._compute_top_distribution(naics_2digit_clean, top_n=5)
+            else:
+                attributes['naics_2digit'] = []
+            
+            # 4位NAICS
+            naics_4digit = overlap_df['naics_code'].astype(str).str[:4]
+            naics_4digit_clean = naics_4digit[
+                (naics_4digit != 'unkn') & 
+                (naics_4digit.str.len() >= 4)
+            ]
+            if len(naics_4digit_clean) > 0:
+                attributes['naics_4digit'] = self._compute_top_distribution(naics_4digit_clean, top_n=5)
+            else:
+                attributes['naics_4digit'] = []
+        else:
+            attributes['naics_2digit'] = []
+            attributes['naics_4digit'] = []
+        
+        # 地理分布
+        if 'real_state' in overlap_df.columns:
+            states = overlap_df['real_state'][
+                (overlap_df['real_state'] != 'unknown') & 
+                (overlap_df['real_state'].notna())
+            ]
+            attributes['states'] = self._compute_top_distribution(states, top_n=5)
+        else:
+            attributes['states'] = []
+        
+        if 'real_metro_area' in overlap_df.columns:
+            metros = overlap_df['real_metro_area'][
+                (overlap_df['real_metro_area'] != 'unknown') & 
+                (overlap_df['real_metro_area'].notna())
+            ]
+            attributes['metros'] = self._compute_top_distribution(metros, top_n=5)
+        else:
+            attributes['metros'] = []
+        
+        # RICS分类
+        for rics_col in ['rics_k50', 'rics_k200', 'rics_k400']:
+            if rics_col in overlap_df.columns:
+                rics = overlap_df[rics_col][
+                    (overlap_df[rics_col] != 'unknown') & 
+                    (overlap_df[rics_col].notna())
+                ]
+                attributes[rics_col] = self._compute_top_distribution(rics, top_n=3)
+            else:
+                attributes[rics_col] = []
+        
+        # 公司分布
+        if 'company_name' in overlap_df.columns:
+            companies = overlap_df['company_name'][
+                (overlap_df['company_name'] != 'unknown') & 
+                (overlap_df['company_name'].notna())
+            ]
+            attributes['companies'] = self._compute_top_distribution(companies, top_n=10)
+        else:
+            attributes['companies'] = []
+        
+        # 劳动力统计（数值型）
+        numeric_attrs = {
+            'avg_seniority': 'avg_seniority',
+            'avg_salary': 'avg_salary',
+            'avg_total_compensation': 'avg_total_compensation',
+            'avg_remote_suitability': 'avg_remote_suitability',
+            'role_entropy': 'role_entropy'
+        }
+        
+        for attr_key, col_name in numeric_attrs.items():
+            if col_name in overlap_df.columns:
+                values = overlap_df[col_name].dropna()
+                if len(values) > 0:
+                    attributes[attr_key] = {
+                        'mean': float(values.mean()),
+                        'median': float(values.median()),
+                        'min': float(values.min()),
+                        'max': float(values.max())
+                    }
+                else:
+                    attributes[attr_key] = None
+            else:
+                attributes[attr_key] = None
+        
+        return attributes
 
+    def _compute_top_distribution(self, series, top_n=5):
+        """
+        计算Series的top N分布
+        
         Returns:
         --------
         list: [{'value': name, 'count': count, 'percentage': pct}, ...]
         """
+        if len(series) == 0:
+            return []
+        
+        counts = series.value_counts().head(top_n)
+        total = len(series)
+        
+        distribution = []
+        for value, count in counts.items():
+            distribution.append({
+                'value': str(value),
+                'count': int(count),
+                'percentage': round(count / total * 100, 2)
+            })
+        
+        return distribution
+
+    def _format_distribution(self, counts, top_n=None):
+        """将计数转换为标准分布格式"""
         if top_n:
             counts = counts.head(top_n)
 
@@ -233,7 +375,7 @@ class ConnectionDataPreparerWithAttributes:
         distribution = []
 
         for value, count in counts.items():
-            if pd.notna(value) and str(value).strip():
+            if pd.notna(value) and str(value).strip() and str(value) != 'unknown':
                 distribution.append({
                     'value': str(value),
                     'count': int(count),
@@ -257,15 +399,31 @@ class ConnectionDataPreparerWithAttributes:
             'top_companies': []
         }
 
-    def load_all_community_attributes(self, years):
-        """
-        预加载所有需要的年份的社区属性（使用当前层级）
+    def _get_empty_overlap_attributes(self):
+        """返回空的重叠节点属性"""
+        return {
+            'overlap_size': 0,
+            'overlap_percentage_in_comm1': 0,
+            'overlap_percentage_in_comm2': 0,
+            'naics_2digit': [],
+            'naics_4digit': [],
+            'states': [],
+            'metros': [],
+            'rics_k50': [],
+            'rics_k200': [],
+            'rics_k400': [],
+            'companies': [],
+            'avg_seniority': None,
+            'avg_salary': None,
+            'avg_total_compensation': None,
+            'avg_remote_suitability': None,
+            'role_entropy': None
+        }
 
-        Parameters:
-        -----------
-        years : set
-            需要加载的年份集合
-        """
+    # ==================== 预加载社区属性 ====================
+    
+    def load_all_community_attributes(self, years):
+        """预加载所有需要的年份的社区属性"""
         logging.info("\n" + "="*80)
         logging.info(f"Loading community attributes for all years (Level {self.level})")
         logging.info("="*80)
@@ -276,19 +434,15 @@ class ConnectionDataPreparerWithAttributes:
             if df is None:
                 continue
 
-            # 检查当前层级列是否存在
             if self.level_column not in df.columns:
                 logging.warning(f"Column {self.level_column} not found in {year} data")
-                logging.warning(f"Available columns: {[col for col in df.columns if col.startswith('community_')]}")
                 continue
 
-            # 获取该年份所有社区ID（排除"-1"）
             community_ids = df[self.level_column].unique()
             community_ids = [cid for cid in community_ids if str(cid) != "-1"]
 
             logging.info(f"Processing {len(community_ids)} communities for year {year} at level {self.level}")
 
-            # 为每个社区提取属性
             for comm_id in community_ids:
                 key = (int(year), str(comm_id))
                 attributes = self.extract_community_attributes(df, comm_id)
@@ -297,6 +451,8 @@ class ConnectionDataPreparerWithAttributes:
         logging.info(f"\nTotal communities loaded: {len(self.community_attributes):,}")
         logging.info("="*80)
 
+    # ==================== 数据准备 ====================
+    
     def filter_noise(self, df):
         """剔除明显噪音"""
         logging.info("\n" + "="*80)
@@ -321,15 +477,9 @@ class ConnectionDataPreparerWithAttributes:
         return df_filtered
 
     def prepare_data(self, df):
-        """
-        准备可视化数据（包含详细属性）
-
-        Returns:
-        --------
-        dict: {'nodes': [...], 'links': [...], 'stats': {...}}
-        """
+        """准备可视化数据（包含重叠节点属性）"""
         logging.info("\n" + "="*80)
-        logging.info(f"Preparing visualization data with attributes (Level {self.level})")
+        logging.info(f"Preparing visualization data with overlap attributes (Level {self.level})")
         logging.info("="*80)
 
         # 只保留相邻年份的连接
@@ -354,9 +504,9 @@ class ConnectionDataPreparerWithAttributes:
         nodes = self._create_nodes_with_attributes(df_filtered)
         logging.info(f"Created {len(nodes)} nodes with attributes")
 
-        # 创建边
-        links = self._create_links(df_filtered)
-        logging.info(f"Created {len(links)} links")
+        # 创建边（包含重叠节点属性）
+        links = self._create_links_with_overlap_attributes(df_filtered)
+        logging.info(f"Created {len(links)} links with overlap attributes")
 
         # 统计信息
         stats = self._compute_stats(df_filtered, nodes, links)
@@ -378,7 +528,6 @@ class ConnectionDataPreparerWithAttributes:
                 year = int(row['year1'])
                 comm_id = str(row['community1'])
 
-                # 获取社区属性
                 key = (year, comm_id)
                 attributes = self.community_attributes.get(key, self._get_empty_attributes())
 
@@ -390,9 +539,8 @@ class ConnectionDataPreparerWithAttributes:
                     'size': int(row['size1']),
                     'out_degree': 0,
                     'in_degree': 0,
-                    # 详细属性
                     'attributes': {
-                        'total_workforce': attributes['total_workforce'],
+                        'total_workforce': attributes.get('total_workforce', 0),
                         'top3_states': attributes['states'][:3],
                         'top5_metros': attributes['metros'][:5],
                         'top3_naics_2digit': attributes['naics_2digit'][:3],
@@ -411,7 +559,6 @@ class ConnectionDataPreparerWithAttributes:
                 year = int(row['year2'])
                 comm_id = str(row['community2'])
 
-                # 获取社区属性
                 key = (year, comm_id)
                 attributes = self.community_attributes.get(key, self._get_empty_attributes())
 
@@ -423,9 +570,8 @@ class ConnectionDataPreparerWithAttributes:
                     'size': int(row['size2']),
                     'out_degree': 0,
                     'in_degree': 0,
-                    # 详细属性
                     'attributes': {
-                        'total_workforce': attributes['total_workforce'],
+                        'total_workforce': attributes.get('total_workforce', 0),
                         'top3_states': attributes['states'][:3],
                         'top5_metros': attributes['metros'][:5],
                         'top3_naics_2digit': attributes['naics_2digit'][:3],
@@ -443,13 +589,25 @@ class ConnectionDataPreparerWithAttributes:
 
         return list(nodes_dict.values())
 
-    def _create_links(self, df):
-        """创建边列表"""
+    def _create_links_with_overlap_attributes(self, df):
+        """创建边列表 - 包含重叠节点属性（核心新增功能）"""
         links = []
+        
+        total_links = len(df)
+        logging.info(f"Extracting overlap attributes for {total_links} links...")
 
-        for _, row in df.iterrows():
+        for idx, row in df.iterrows():
+            if (idx + 1) % 100 == 0:
+                logging.info(f"  Progress: {idx + 1}/{total_links} links processed")
+            
             source_id = f"{int(row['year1'])}_{row['community1']}"
             target_id = f"{int(row['year2'])}_{row['community2']}"
+            
+            year1, comm1 = int(row['year1']), str(row['community1'])
+            year2, comm2 = int(row['year2']), str(row['community2'])
+            
+            # === 提取重叠节点属性 ===
+            overlap_attrs = self.extract_overlap_attributes(year1, comm1, year2, comm2)
 
             link = {
                 'source': source_id,
@@ -470,7 +628,9 @@ class ConnectionDataPreparerWithAttributes:
                 'state_cosine_similarity': float(row['state_cosine_similarity']) if pd.notna(row.get('state_cosine_similarity')) else None,
                 'state_overlap_index': float(row['state_overlap_index']) if pd.notna(row.get('state_overlap_index')) else None,
                 'metro_cosine_similarity': float(row['metro_cosine_similarity']) if pd.notna(row.get('metro_cosine_similarity')) else None,
-                'metro_overlap_index': float(row['metro_overlap_index']) if pd.notna(row.get('metro_overlap_index')) else None
+                'metro_overlap_index': float(row['metro_overlap_index']) if pd.notna(row.get('metro_overlap_index')) else None,
+                # === 新增：重叠节点属性分布 ===
+                'overlap_attributes': overlap_attrs
             }
 
             links.append(link)
@@ -479,10 +639,14 @@ class ConnectionDataPreparerWithAttributes:
 
     def _compute_stats(self, df, nodes, links):
         """计算统计信息"""
+        # 统计有多少边包含了重叠节点属性
+        links_with_overlap = sum(1 for link in links if link['overlap_attributes']['overlap_size'] > 0)
+        
         stats = {
             'level': self.level,
             'total_nodes': len(nodes),
             'total_links': len(links),
+            'links_with_overlap_attributes': links_with_overlap,
             'year_range': {
                 'min': int(df['year1'].min()),
                 'max': int(df['year2'].max())
@@ -508,11 +672,14 @@ class ConnectionDataPreparerWithAttributes:
                 'max_out_degree': max(n['out_degree'] for n in nodes),
                 'max_in_degree': max(n['in_degree'] for n in nodes)
             },
-            'attributes_loaded': len(self.community_attributes)
+            'attributes_loaded': len(self.community_attributes),
+            'years_cached': len(self.year_data_cache)
         }
 
         return stats
 
+    # ==================== 保存结果 ====================
+    
     def save_json(self, data):
         """保存为JSON文件"""
         logging.info(f"\nSaving to {self.output_file}")
@@ -526,6 +693,7 @@ class ConnectionDataPreparerWithAttributes:
         logging.info(f"  Level: {self.level}")
         logging.info(f"  Nodes: {len(data['nodes']):,}")
         logging.info(f"  Links: {len(data['links']):,}")
+        logging.info(f"  Links with overlap attrs: {data['stats']['links_with_overlap_attributes']:,}")
         logging.info(f"  Attributes: {data['stats']['attributes_loaded']:,} communities")
         logging.info(f"  File size: {file_size_kb:.2f} KB")
 
@@ -539,29 +707,34 @@ class ConnectionDataPreparerWithAttributes:
         stats = data['stats']
 
         print("\n" + "="*80)
-        print(f"DATA SUMMARY - LEVEL {self.level} WITH DETAILED ATTRIBUTES")
+        print(f"DATA SUMMARY - LEVEL {self.level} WITH OVERLAP NODE ATTRIBUTES")
         print("="*80)
         print(f"Total nodes: {len(nodes):,}")
         print(f"Total links: {len(links):,}")
+        print(f"Links with overlap attributes: {stats['links_with_overlap_attributes']:,}")
         print(f"Communities with attributes: {stats['attributes_loaded']:,}")
 
-        # 示例：显示第一个节点的属性
-        if len(nodes) > 0:
-            sample_node = nodes[0]
-            print(f"\nSample node attributes ({sample_node['id']}):")
-            attrs = sample_node['attributes']
-            print(f"  Workforce: {attrs['total_workforce']:,}")
-            print(f"  Top states: {len(attrs['top3_states'])} loaded")
-            print(f"  Top metros: {len(attrs['top5_metros'])} loaded")
-            print(f"  Top NAICS (2-digit): {len(attrs['top3_naics_2digit'])} loaded")
-            print(f"  Top NAICS (4-digit): {len(attrs['top5_naics_4digit'])} loaded")
+        # 示例：显示第一个有重叠节点的边
+        sample_link = next((l for l in links if l['overlap_attributes']['overlap_size'] > 0), None)
+        if sample_link:
+            print(f"\nSample overlap attributes ({sample_link['source']} → {sample_link['target']}):")
+            overlap = sample_link['overlap_attributes']
+            print(f"  Overlap size: {overlap['overlap_size']}")
+            print(f"  Overlap % in source: {overlap['overlap_percentage_in_comm1']:.2f}%")
+            print(f"  Overlap % in target: {overlap['overlap_percentage_in_comm2']:.2f}%")
+            print(f"  Top NAICS (2-digit): {len(overlap['naics_2digit'])} loaded")
+            print(f"  Top states: {len(overlap['states'])} loaded")
+            print(f"  Top metros: {len(overlap['metros'])} loaded")
+            print(f"  Top companies: {len(overlap['companies'])} loaded")
+            if overlap['avg_salary']:
+                print(f"  Avg salary: ${overlap['avg_salary']['mean']:,.0f}")
 
         print("="*80 + "\n")
 
     def run(self):
         """运行完整流程"""
         logging.info("\n" + "="*80)
-        logging.info(f"COMMUNITY CONNECTION DATA PREPARATION - LEVEL {self.level} WITH ATTRIBUTES")
+        logging.info(f"COMMUNITY CONNECTION DATA PREPARATION - LEVEL {self.level} WITH OVERLAP ATTRIBUTES")
         logging.info("="*80)
         logging.info(f"Similarity matrix: {self.similarity_file}")
         logging.info(f"Community data dir: {self.community_data_dir}")
@@ -572,7 +745,7 @@ class ConnectionDataPreparerWithAttributes:
         # 加载数据
         df = self.load_similarity_matrix()
 
-        # 准备可视化数据（包含属性）
+        # 准备可视化数据（包含重叠节点属性）
         data = self.prepare_data(df)
 
         if len(data['nodes']) == 0:
@@ -585,7 +758,7 @@ class ConnectionDataPreparerWithAttributes:
         # 保存
         self.save_json(data)
 
-        logging.info(f"\n✓ Data preparation with attributes for Level {self.level} completed!\n")
+        logging.info(f"\n✓ Data preparation with overlap attributes for Level {self.level} completed!\n")
 
         return data
 
@@ -593,14 +766,14 @@ class ConnectionDataPreparerWithAttributes:
 def main():
     """主函数 - 支持多层级"""
     # 配置参数
-    level = 2  # ← 修改这里选择不同层级 (1, 2, 3, ...)
+    level = 1  # ← 修改这里选择不同层级 (1, 2, 3, ...)
     
     similarity_file = f"./similarity_matrices_complete/similarity_matrix_level{level}_complete.parquet"
     community_data_dir = "./workforce_community_results_adaptive_4d"
-    output_file = f"./community_connections_level{level}_with_attributes.json"
+    output_file = f"./community_connections_level{level}_with_overlap_attributes.json"
 
     # 创建准备器
-    preparer = ConnectionDataPreparerWithAttributes(
+    preparer = ConnectionDataPreparerWithOverlapAttributes(
         similarity_file=similarity_file,
         community_data_dir=community_data_dir,
         level=level,
@@ -615,13 +788,18 @@ def main():
             print("\n" + "="*80)
             print("NEXT STEPS:")
             print("="*80)
-            print(f"1. Open: community-connection-explorer.html")
-            print(f"2. Load: {output_file}")
-            print(f"3. Explore Level {level} communities with detailed attributes:")
-            print(f"   - Geographic distribution (states, metros)")
-            print(f"   - Industry distribution (NAICS codes)")
-            print(f"   - Company composition")
-            print(f"   - Workforce statistics")
+            print(f"1. JSON file created: {output_file}")
+            print(f"2. Data includes:")
+            print(f"   - {len(data['nodes'])} nodes with community attributes")
+            print(f"   - {len(data['links'])} links with:")
+            print(f"     • Similarity metrics (Jaccard, retention rates)")
+            print(f"     • Community-level attribute similarity")
+            print(f"     • **OVERLAP NODE ATTRIBUTES** (NEW!):")
+            print(f"       - Industry distribution (NAICS codes)")
+            print(f"       - Geographic distribution (states, metros)")
+            print(f"       - Company composition")
+            print(f"       - Salary & seniority statistics")
+            print(f"       - RICS classifications")
             print("="*80 + "\n")
 
         return preparer, data
