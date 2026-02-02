@@ -1444,6 +1444,20 @@
                         </div>
                     </div>`;
                 }
+            } else {
+                // 当数据中没有重叠节点属性时显示提示
+                html += `
+                <h3 style="margin-top: 15px;">🔗 重叠节点属性分布</h3>
+                <div class="detail-item" style="background: #2a3555; padding: 15px; border-left: 3px solid #e74c3c;">
+                    <div class="detail-label" style="color: #f39c12; margin-bottom: 8px;">⚠️ 数据不可用</div>
+                    <div class="detail-value" style="font-size: 12px; line-height: 1.6;">
+                        当前加载的数据文件不包含重叠节点属性信息。<br><br>
+                        <strong>解决方法：</strong><br>
+                        1. 使用最新版本的 <code>evoline.py</code> 重新生成数据<br>
+                        2. 运行脚本后会生成包含 <code>overlap_attributes</code> 字段的新JSON文件<br>
+                        3. 重新加载新生成的数据文件
+                    </div>
+                </div>`;
             }
 
             panel.html(html);
