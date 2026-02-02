@@ -693,37 +693,74 @@
                     // 为每个低层级节点找到对应的高层级节点
                     nodesLower.forEach(nodeLower => {
                         nodesHigher.forEach(nodeHigher => {
-                            // 假设层级关系是包含关系，需要检查节点是否属于同一个更高层级的社区
-                            // 这里简化处理：如果节点在同一年，就可能有层级关系
-                            // 实际应用中需要根据真实的层级包含关系来判断
+                            // 检查层级关系：基于社区编号的"."分隔符
+                            // 例如：Level 1 的 "1" 对应 Level 2 的 "1.1", "1.2" 等
+                            const lowerComm = String(nodeLower.community);
+                            const higherComm = String(nodeHigher.community);
 
-                            const edge = {
-                                source: nodeLower.id,
-                                target: nodeHigher.id,
-                                type: 'level',
-                                fromLevel: lowerLevel,
-                                toLevel: higherLevel,
-                                year: year
-                            };
+                            // 检查是否存在父子关系
+                            // 父社区编号应该是子社区编号的前缀（去掉最后一个"."及其后的部分）
+                            const isParentChild = checkParentChildRelation(lowerComm, higherComm);
 
-                            const nodeKey = nodeLower.id;
-                            if (!levelEdgesByNode[nodeKey]) {
-                                levelEdgesByNode[nodeKey] = [];
+                            if (isParentChild) {
+                                const edge = {
+                                    source: nodeLower.id,
+                                    target: nodeHigher.id,
+                                    type: 'level',
+                                    fromLevel: lowerLevel,
+                                    toLevel: higherLevel,
+                                    year: year
+                                };
+
+                                const nodeKey = nodeLower.id;
+                                if (!levelEdgesByNode[nodeKey]) {
+                                    levelEdgesByNode[nodeKey] = [];
+                                }
+                                levelEdgesByNode[nodeKey].push(edge);
+
+                                // 反向边
+                                const reverseNodeKey = nodeHigher.id;
+                                if (!levelEdgesByNode[reverseNodeKey]) {
+                                    levelEdgesByNode[reverseNodeKey] = [];
+                                }
+                                levelEdgesByNode[reverseNodeKey].push(edge);
                             }
-                            levelEdgesByNode[nodeKey].push(edge);
-
-                            // 反向边
-                            const reverseNodeKey = nodeHigher.id;
-                            if (!levelEdgesByNode[reverseNodeKey]) {
-                                levelEdgesByNode[reverseNodeKey] = [];
-                            }
-                            levelEdgesByNode[reverseNodeKey].push(edge);
                         });
                     });
                 });
             }
 
             console.log('构建层级边完成，共', Object.keys(levelEdgesByNode).length, '个节点有层级关系');
+        }
+
+        function checkParentChildRelation(parentComm, childComm) {
+            /**
+             * 检查两个社区编号是否存在父子关系
+             *
+             * 规则：
+             * - Level 1 -> Level 2: "1" 是 "1.1", "1.2" 的父节点
+             * - Level 2 -> Level 3: "1.1" 是 "1.1.1", "1.1.2" 的父节点
+             *
+             * 实现：
+             * - 如果 childComm 以 parentComm + "." 开头
+             * - 并且 childComm 去掉 parentComm + "." 后不包含"."（直接子节点，不是孙节点）
+             */
+
+            // 转换为字符串并处理可能的数字类型
+            const parent = String(parentComm);
+            const child = String(childComm);
+
+            // 检查是否以 parent. 开头
+            const prefix = parent + '.';
+            if (!child.startsWith(prefix)) {
+                return false;
+            }
+
+            // 获取剩余部分
+            const remainder = child.substring(prefix.length);
+
+            // 检查剩余部分是否不包含"."（确保是直接子节点）
+            return !remainder.includes('.');
         }
 
         function populateYearSelector() {
