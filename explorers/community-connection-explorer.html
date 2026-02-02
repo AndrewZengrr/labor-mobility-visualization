@@ -389,6 +389,12 @@
                     <input type="file" id="propertiesInput" accept=".json">
                 </div>
                 <div class="control-group">
+                    <label>起始年份选择</label>
+                    <select id="startYearSelect" class="btn" style="padding: 8px;">
+                        <option value="">请先加载数据</option>
+                    </select>
+                </div>
+                <div class="control-group">
                     <button class="btn btn-primary" id="resetBtn">重置视图</button>
                 </div>
                 <div class="control-group">
@@ -496,6 +502,7 @@
             // 绑定事件
             d3.select('#fileInput').on('change', handleFileUpload);
             d3.select('#propertiesInput').on('change', handlePropertiesUpload);
+            d3.select('#startYearSelect').on('change', handleYearChange);
             d3.select('#resetBtn').on('click', resetView);
             d3.select('#collapseAllBtn').on('click', collapseAll);
 
@@ -590,9 +597,41 @@
                 edgesBySource[edge.source].push(edge);
             });
 
-            // 找到最小年份并初始化视图
+            // 填充年份选择器
+            populateYearSelector();
+
+            // 找到最小年份（默认2000或实际最小年份）并初始化视图
             const minYear = Math.min(...Object.keys(nodesByYear).map(Number));
-            initializeView(minYear);
+            const defaultYear = minYear >= 2000 ? 2000 : minYear;
+            const startYear = nodesByYear[defaultYear] ? defaultYear : minYear;
+
+            // 设置选择器的值
+            d3.select('#startYearSelect').property('value', startYear);
+
+            initializeView(startYear);
+        }
+
+        function populateYearSelector() {
+            const years = Object.keys(nodesByYear).map(Number).sort((a, b) => a - b);
+            const selector = d3.select('#startYearSelect');
+
+            // 清空并重新填充
+            selector.html('');
+            years.forEach(year => {
+                selector.append('option')
+                    .attr('value', year)
+                    .text(`${year}年 (${nodesByYear[year].length}个社区)`);
+            });
+
+            console.log('已加载年份范围:', years[0], '-', years[years.length - 1]);
+        }
+
+        function handleYearChange() {
+            const selectedYear = parseInt(d3.select('#startYearSelect').property('value'));
+            if (!isNaN(selectedYear) && nodesByYear[selectedYear]) {
+                initializeView(selectedYear);
+                console.log('切换到起始年份:', selectedYear);
+            }
         }
 
         function initializeView(startYear) {
@@ -1232,6 +1271,177 @@
                     <div class="detail-item">
                         <div class="detail-label">主导州匹配</div>
                         <div class="detail-value">${edge.dominant_state_match ? '是' : '否'}</div>
+                    </div>`;
+                }
+            }
+
+            // 重叠节点属性分布（新增功能）
+            if (edge.overlap_attributes && edge.overlap_attributes.overlap_size > 0) {
+                const overlap = edge.overlap_attributes;
+
+                html += '<h3 style="margin-top: 15px;">🔗 重叠节点属性分布</h3>';
+
+                // 基本统计
+                html += `
+                <div class="detail-item" style="background: #2a3555;">
+                    <div class="detail-label">重叠节点数量</div>
+                    <div class="detail-value">${overlap.overlap_size}</div>
+                </div>`;
+
+                if (overlap.overlap_percentage_in_comm1 !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">占源社区比例</div>
+                        <div class="detail-value">${overlap.overlap_percentage_in_comm1.toFixed(2)}%</div>
+                    </div>`;
+                }
+
+                if (overlap.overlap_percentage_in_comm2 !== undefined) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">占目标社区比例</div>
+                        <div class="detail-value">${overlap.overlap_percentage_in_comm2.toFixed(2)}%</div>
+                    </div>`;
+                }
+
+                // 产业分布 - NAICS 2位
+                if (overlap.naics_2digit && overlap.naics_2digit.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🏭 Top产业分布 (NAICS 2位)</h3>';
+                    overlap.naics_2digit.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">NAICS ${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 产业分布 - NAICS 4位
+                if (overlap.naics_4digit && overlap.naics_4digit.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">📋 Top产业分布 (NAICS 4位)</h3>';
+                    overlap.naics_4digit.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">NAICS ${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 地理分布 - 州
+                if (overlap.states && overlap.states.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🗺️ Top州分布</h3>';
+                    overlap.states.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 地理分布 - 都市区
+                if (overlap.metros && overlap.metros.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🏙️ Top都市区分布</h3>';
+                    overlap.metros.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // RICS分类
+                if (overlap.rics_k50 && overlap.rics_k50.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🏷️ RICS K50分类</h3>';
+                    overlap.rics_k50.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                if (overlap.rics_k200 && overlap.rics_k200.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🏷️ RICS K200分类</h3>';
+                    overlap.rics_k200.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 公司分布
+                if (overlap.companies && overlap.companies.length > 0) {
+                    html += '<h3 style="margin-top: 15px; font-size: 13px;">🏢 Top公司分布</h3>';
+                    overlap.companies.forEach(item => {
+                        html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${item.value}</div>
+                            <div class="detail-value">${item.count} (${item.percentage}%)</div>
+                        </div>`;
+                    });
+                }
+
+                // 数值型统计
+                html += '<h3 style="margin-top: 15px; font-size: 13px;">📊 劳动力统计</h3>';
+
+                if (overlap.avg_salary) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">平均薪资</div>
+                        <div class="detail-value">
+                            均值: $${overlap.avg_salary.mean.toLocaleString('en-US', {maximumFractionDigits: 0})}<br>
+                            中位数: $${overlap.avg_salary.median.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                        </div>
+                    </div>`;
+                }
+
+                if (overlap.avg_total_compensation) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">平均总薪酬</div>
+                        <div class="detail-value">
+                            均值: $${overlap.avg_total_compensation.mean.toLocaleString('en-US', {maximumFractionDigits: 0})}<br>
+                            中位数: $${overlap.avg_total_compensation.median.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                        </div>
+                    </div>`;
+                }
+
+                if (overlap.avg_seniority) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">平均资历</div>
+                        <div class="detail-value">
+                            均值: ${overlap.avg_seniority.mean.toFixed(2)}<br>
+                            中位数: ${overlap.avg_seniority.median.toFixed(2)}
+                        </div>
+                    </div>`;
+                }
+
+                if (overlap.avg_remote_suitability) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">平均远程工作适配度</div>
+                        <div class="detail-value">
+                            均值: ${overlap.avg_remote_suitability.mean.toFixed(3)}<br>
+                            中位数: ${overlap.avg_remote_suitability.median.toFixed(3)}
+                        </div>
+                    </div>`;
+                }
+
+                if (overlap.role_entropy) {
+                    html += `
+                    <div class="detail-item">
+                        <div class="detail-label">角色熵</div>
+                        <div class="detail-value">
+                            均值: ${overlap.role_entropy.mean.toFixed(3)}<br>
+                            中位数: ${overlap.role_entropy.median.toFixed(3)}
+                        </div>
                     </div>`;
                 }
             }
