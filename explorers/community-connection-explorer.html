@@ -381,12 +381,24 @@
 
             <div class="controls">
                 <div class="control-group">
-                    <label>加载连接数据</label>
-                    <input type="file" id="fileInput" accept=".json">
+                    <label>加载Level 1数据</label>
+                    <input type="file" id="fileInputLevel1" accept=".json">
                 </div>
                 <div class="control-group">
-                    <label>加载属性数据(可选)</label>
-                    <input type="file" id="propertiesInput" accept=".json">
+                    <label>加载Level 2数据(可选)</label>
+                    <input type="file" id="fileInputLevel2" accept=".json">
+                </div>
+                <div class="control-group">
+                    <label>加载Level 3数据(可选)</label>
+                    <input type="file" id="fileInputLevel3" accept=".json">
+                </div>
+                <div class="control-group">
+                    <label>起始层级选择</label>
+                    <select id="startLevelSelect" class="btn" style="padding: 8px;">
+                        <option value="1">Level 1</option>
+                        <option value="2">Level 2</option>
+                        <option value="3">Level 3</option>
+                    </select>
                 </div>
                 <div class="control-group">
                     <label>起始年份选择</label>
@@ -431,22 +443,34 @@
             <div class="context-menu" id="contextMenu">
                 <div class="context-menu-item" id="menuViewProperties">查看社区属性</div>
                 <div class="context-menu-divider"></div>
-                <div class="context-menu-item" id="menuExpand">展开社区</div>
+                <div class="context-menu-item" id="menuExpandTime">展开时间连接</div>
+                <div class="context-menu-item" id="menuExpandLevel">展开层级关系</div>
+                <div class="context-menu-divider"></div>
                 <div class="context-menu-item" id="menuCollapse">收起社区</div>
             </div>
             <div class="legend">
                 <div class="legend-title">图例</div>
+                <div style="margin-bottom: 10px; font-weight: 600; color: #ffffff; font-size: 11px;">层级颜色</div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #4a90e2;"></div>
-                    <span>已展开社区</span>
+                    <span>Level 1</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background: #8892b0;"></div>
-                    <span>未展开社区</span>
+                    <div class="legend-color" style="background: #2ecc71;"></div>
+                    <span>Level 2</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background: #e74c3c;"></div>
-                    <span>叶子社区(无后继)</span>
+                    <span>Level 3</span>
+                </div>
+                <div style="margin: 10px 0; font-weight: 600; color: #ffffff; font-size: 11px;">边类型</div>
+                <div class="legend-item">
+                    <div style="width: 20px; height: 2px; background: #6a7590; margin-right: 10px;"></div>
+                    <span>时间连接</span>
+                </div>
+                <div class="legend-item">
+                    <div style="width: 20px; height: 2px; background: #9b59b6; margin-right: 10px; border-top: 2px dashed #9b59b6;"></div>
+                    <span>层级关系</span>
                 </div>
             </div>
         </div>
@@ -456,15 +480,18 @@
         // ============================================
         // 全局变量
         // ============================================
-        let allData = null;          // 原始数据
+        let allDataByLevel = {};     // 按层级存储原始数据 {1: data, 2: data, 3: data}
         let communityProperties = {}; // 社区属性数据 {nodeId: {state_dist, metro_dist, naics_dist}}
         let visibleNodes = new Set(); // 当前可见的节点ID
         let visibleEdges = new Set(); // 当前可见的边ID
-        let expandedNodes = new Set(); // 已展开的节点ID
-        let nodesByYear = {};        // 按年份组织的节点
-        let edgesBySource = {};      // 按源节点组织的边
-        let nodeData = {};           // 节点详细信息
+        let expandedNodes = new Set(); // 已展开的节点ID (时间连接)
+        let expandedLevels = new Set(); // 已展开层级关系的节点ID
+        let nodesByYearAndLevel = {}; // 按年份和层级组织的节点 {level: {year: [nodes]}}
+        let timeEdgesBySource = {};   // 按源节点组织的时间边
+        let levelEdgesByNode = {};    // 按节点组织的层级边 {nodeKey: [edges]}
+        let nodeData = {};            // 节点详细信息
         let currentContextNode = null; // 当前右键菜单对应的节点
+        let currentLevel = 1;         // 当前显示的主层级
 
         let svg, g, simulation;
         let width, height;
@@ -474,7 +501,11 @@
             expanded: '#4a90e2',
             collapsed: '#8892b0',
             leaf: '#e74c3c',
-            link: '#6a7590'
+            timeLink: '#6a7590',
+            levelLink: '#9b59b6',
+            level1: '#4a90e2',
+            level2: '#2ecc71',
+            level3: '#e74c3c'
         };
 
         // ============================================
@@ -500,8 +531,10 @@
             svg.call(zoom);
 
             // 绑定事件
-            d3.select('#fileInput').on('change', handleFileUpload);
-            d3.select('#propertiesInput').on('change', handlePropertiesUpload);
+            d3.select('#fileInputLevel1').on('change', (event) => handleFileUpload(event, 1));
+            d3.select('#fileInputLevel2').on('change', (event) => handleFileUpload(event, 2));
+            d3.select('#fileInputLevel3').on('change', (event) => handleFileUpload(event, 3));
+            d3.select('#startLevelSelect').on('change', handleLevelChange);
             d3.select('#startYearSelect').on('change', handleYearChange);
             d3.select('#resetBtn').on('click', resetView);
             d3.select('#collapseAllBtn').on('click', collapseAll);
@@ -511,8 +544,12 @@
                 if (currentContextNode) showCommunityProperties(currentContextNode);
                 hideContextMenu();
             });
-            d3.select('#menuExpand').on('click', () => {
-                if (currentContextNode) expandNode(currentContextNode.id);
+            d3.select('#menuExpandTime').on('click', () => {
+                if (currentContextNode) expandNodeTime(currentContextNode.id);
+                hideContextMenu();
+            });
+            d3.select('#menuExpandLevel').on('click', () => {
+                if (currentContextNode) expandNodeLevel(currentContextNode.id);
                 hideContextMenu();
             });
             d3.select('#menuCollapse').on('click', () => {
@@ -542,7 +579,7 @@
         // ============================================
         // 数据加载
         // ============================================
-        function handleFileUpload(event) {
+        function handleFileUpload(event, level) {
             const file = event.target.files[0];
             if (!file) return;
 
@@ -550,7 +587,16 @@
             reader.onload = (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
-                    loadData(data);
+                    allDataByLevel[level] = data;
+                    console.log(`已加载 Level ${level} 数据:`, data.nodes.length, '个节点', data.links.length, '条边');
+
+                    // 如果是第一个加载的数据，初始化视图
+                    if (Object.keys(allDataByLevel).length === 1) {
+                        loadAllData();
+                    } else {
+                        // 重新加载所有数据并构建层级关系
+                        loadAllData();
+                    }
                 } catch (error) {
                     alert('数据格式错误: ' + error.message);
                 }
@@ -558,61 +604,133 @@
             reader.readAsText(file);
         }
 
-        function handlePropertiesUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    communityProperties = data;
-                    console.log('已加载社区属性数据:', Object.keys(communityProperties).length, '个社区');
-                } catch (error) {
-                    alert('属性数据格式错误: ' + error.message);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        function loadData(data) {
-            allData = data;
-
-            // 组织数据结构
-            nodesByYear = {};
-            edgesBySource = {};
+        function loadAllData() {
+            // 重置数据结构
+            nodesByYearAndLevel = {};
+            timeEdgesBySource = {};
+            levelEdgesByNode = {};
             nodeData = {};
 
-            // 处理节点
-            data.nodes.forEach(node => {
-                const year = node.year;
-                if (!nodesByYear[year]) nodesByYear[year] = [];
-                nodesByYear[year].push(node);
-                nodeData[node.id] = node;
+            // 处理每个层级的数据
+            Object.keys(allDataByLevel).forEach(level => {
+                const data = allDataByLevel[level];
+                const levelNum = parseInt(level);
+
+                if (!nodesByYearAndLevel[levelNum]) {
+                    nodesByYearAndLevel[levelNum] = {};
+                }
+
+                // 处理节点 - 添加层级信息到节点ID
+                data.nodes.forEach(node => {
+                    const year = node.year;
+                    const enhancedNode = {...node, level: levelNum, originalId: node.id};
+                    // 新的节点ID格式: level_year_community
+                    enhancedNode.id = `L${levelNum}_${node.year}_${node.community}`;
+
+                    if (!nodesByYearAndLevel[levelNum][year]) {
+                        nodesByYearAndLevel[levelNum][year] = [];
+                    }
+                    nodesByYearAndLevel[levelNum][year].push(enhancedNode);
+                    nodeData[enhancedNode.id] = enhancedNode;
+                });
+
+                // 处理时间边
+                data.links.forEach(edge => {
+                    const sourceId = `L${levelNum}_${edge.source}`;
+                    const targetId = `L${levelNum}_${edge.target}`;
+                    const enhancedEdge = {
+                        ...edge,
+                        source: sourceId,
+                        target: targetId,
+                        type: 'time',
+                        level: levelNum
+                    };
+
+                    if (!timeEdgesBySource[sourceId]) {
+                        timeEdgesBySource[sourceId] = [];
+                    }
+                    timeEdgesBySource[sourceId].push(enhancedEdge);
+                });
             });
 
-            // 处理边
-            data.links.forEach(edge => {
-                if (!edgesBySource[edge.source]) edgesBySource[edge.source] = [];
-                edgesBySource[edge.source].push(edge);
-            });
+            // 构建层级关系边 - 连接相同年份和社区但不同层级的节点
+            buildLevelEdges();
 
             // 填充年份选择器
             populateYearSelector();
 
-            // 找到最小年份（默认2000或实际最小年份）并初始化视图
-            const minYear = Math.min(...Object.keys(nodesByYear).map(Number));
-            const defaultYear = minYear >= 2000 ? 2000 : minYear;
-            const startYear = nodesByYear[defaultYear] ? defaultYear : minYear;
+            // 初始化视图
+            const selectedLevel = parseInt(d3.select('#startLevelSelect').property('value')) || 1;
+            if (nodesByYearAndLevel[selectedLevel]) {
+                currentLevel = selectedLevel;
+                const years = Object.keys(nodesByYearAndLevel[selectedLevel]).map(Number);
+                const minYear = Math.min(...years);
+                const defaultYear = minYear >= 2000 ? 2000 : minYear;
+                const startYear = nodesByYearAndLevel[selectedLevel][defaultYear] ? defaultYear : minYear;
 
-            // 设置选择器的值
-            d3.select('#startYearSelect').property('value', startYear);
+                d3.select('#startYearSelect').property('value', startYear);
+                initializeView(startYear, selectedLevel);
+            }
+        }
 
-            initializeView(startYear);
+        function buildLevelEdges() {
+            // 遍历所有层级，构建层级关系边
+            const levels = Object.keys(nodesByYearAndLevel).map(Number).sort();
+
+            for (let i = 0; i < levels.length - 1; i++) {
+                const lowerLevel = levels[i];
+                const higherLevel = levels[i + 1];
+
+                // 遍历所有年份
+                const yearsLower = Object.keys(nodesByYearAndLevel[lowerLevel]);
+
+                yearsLower.forEach(year => {
+                    if (!nodesByYearAndLevel[higherLevel][year]) return;
+
+                    const nodesLower = nodesByYearAndLevel[lowerLevel][year];
+                    const nodesHigher = nodesByYearAndLevel[higherLevel][year];
+
+                    // 为每个低层级节点找到对应的高层级节点
+                    nodesLower.forEach(nodeLower => {
+                        nodesHigher.forEach(nodeHigher => {
+                            // 假设层级关系是包含关系，需要检查节点是否属于同一个更高层级的社区
+                            // 这里简化处理：如果节点在同一年，就可能有层级关系
+                            // 实际应用中需要根据真实的层级包含关系来判断
+
+                            const edge = {
+                                source: nodeLower.id,
+                                target: nodeHigher.id,
+                                type: 'level',
+                                fromLevel: lowerLevel,
+                                toLevel: higherLevel,
+                                year: year
+                            };
+
+                            const nodeKey = nodeLower.id;
+                            if (!levelEdgesByNode[nodeKey]) {
+                                levelEdgesByNode[nodeKey] = [];
+                            }
+                            levelEdgesByNode[nodeKey].push(edge);
+
+                            // 反向边
+                            const reverseNodeKey = nodeHigher.id;
+                            if (!levelEdgesByNode[reverseNodeKey]) {
+                                levelEdgesByNode[reverseNodeKey] = [];
+                            }
+                            levelEdgesByNode[reverseNodeKey].push(edge);
+                        });
+                    });
+                });
+            }
+
+            console.log('构建层级边完成，共', Object.keys(levelEdgesByNode).length, '个节点有层级关系');
         }
 
         function populateYearSelector() {
-            const years = Object.keys(nodesByYear).map(Number).sort((a, b) => a - b);
+            const level = currentLevel;
+            if (!nodesByYearAndLevel[level]) return;
+
+            const years = Object.keys(nodesByYearAndLevel[level]).map(Number).sort((a, b) => a - b);
             const selector = d3.select('#startYearSelect');
 
             // 清空并重新填充
@@ -620,31 +738,55 @@
             years.forEach(year => {
                 selector.append('option')
                     .attr('value', year)
-                    .text(`${year}年 (${nodesByYear[year].length}个社区)`);
+                    .text(`${year}年 (${nodesByYearAndLevel[level][year].length}个社区)`);
             });
 
             console.log('已加载年份范围:', years[0], '-', years[years.length - 1]);
         }
 
+        function handleLevelChange() {
+            const selectedLevel = parseInt(d3.select('#startLevelSelect').property('value'));
+            if (!isNaN(selectedLevel) && nodesByYearAndLevel[selectedLevel]) {
+                currentLevel = selectedLevel;
+                populateYearSelector();
+
+                const years = Object.keys(nodesByYearAndLevel[selectedLevel]).map(Number);
+                const minYear = Math.min(...years);
+                const defaultYear = minYear >= 2000 ? 2000 : minYear;
+                const startYear = nodesByYearAndLevel[selectedLevel][defaultYear] ? defaultYear : minYear;
+
+                d3.select('#startYearSelect').property('value', startYear);
+                initializeView(startYear, selectedLevel);
+                console.log('切换到层级:', selectedLevel, '年份:', startYear);
+            }
+        }
+
         function handleYearChange() {
             const selectedYear = parseInt(d3.select('#startYearSelect').property('value'));
-            if (!isNaN(selectedYear) && nodesByYear[selectedYear]) {
-                initializeView(selectedYear);
+            const selectedLevel = parseInt(d3.select('#startLevelSelect').property('value')) || currentLevel;
+
+            if (!isNaN(selectedYear) && nodesByYearAndLevel[selectedLevel] && nodesByYearAndLevel[selectedLevel][selectedYear]) {
+                initializeView(selectedYear, selectedLevel);
                 console.log('切换到起始年份:', selectedYear);
             }
         }
 
-        function initializeView(startYear) {
+        function initializeView(startYear, level) {
             // 清空状态
             visibleNodes.clear();
             visibleEdges.clear();
             expandedNodes.clear();
+            expandedLevels.clear();
 
-            // 显示初始年份的所有社区
-            const initialNodes = nodesByYear[startYear] || [];
-            initialNodes.forEach(node => {
-                visibleNodes.add(node.id);
-            });
+            level = level || currentLevel;
+
+            // 显示初始年份和层级的所有社区
+            if (nodesByYearAndLevel[level] && nodesByYearAndLevel[level][startYear]) {
+                const initialNodes = nodesByYearAndLevel[level][startYear];
+                initialNodes.forEach(node => {
+                    visibleNodes.add(node.id);
+                });
+            }
 
             updateVisualization();
         }
@@ -654,21 +796,37 @@
         // ============================================
         function updateVisualization() {
             // 准备可见的节点和边数据
-            const nodes = Array.from(visibleNodes).map(id => nodeData[id]);
-            const links = Array.from(visibleEdges).map(edgeId => {
-                const edge = allData.links.find(e => getEdgeId(e) === edgeId);
-                return {
-                    ...edge,
-                    source: nodeData[edge.source],
-                    target: nodeData[edge.target]
-                };
+            const nodes = Array.from(visibleNodes).map(id => nodeData[id]).filter(n => n);
+
+            // 收集可见的边（包括时间边和层级边）
+            const linksData = [];
+            visibleEdges.forEach(edgeId => {
+                const [type, ...rest] = edgeId.split('|');
+                let edge = null;
+
+                if (type === 'time') {
+                    const sourceId = rest[0];
+                    edge = timeEdgesBySource[sourceId]?.find(e => getEdgeId(e) === edgeId);
+                } else if (type === 'level') {
+                    // 层级边从 levelEdgesByNode 中查找
+                    const nodeId = rest[0];
+                    edge = levelEdgesByNode[nodeId]?.find(e => getEdgeId(e) === edgeId);
+                }
+
+                if (edge) {
+                    linksData.push({
+                        ...edge,
+                        source: nodeData[edge.source],
+                        target: nodeData[edge.target]
+                    });
+                }
             });
 
             // 创建力导向图模拟
             simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(links)
+                .force('link', d3.forceLink(linksData)
                     .id(d => d.id)
-                    .distance(150))
+                    .distance(d => d.type === 'time' ? 150 : 100))
                 .force('charge', d3.forceManyBody().strength(-300))
                 .force('center', d3.forceCenter(width / 2, height / 2))
                 .force('x', d3.forceX(d => {
@@ -677,15 +835,27 @@
                     const index = years.indexOf(d.year);
                     return width * (index + 1) / (years.length + 1);
                 }).strength(0.5))
-                .force('y', d3.forceY(height / 2).strength(0.1));
+                .force('y', d3.forceY(d => {
+                    // 按层级纵向排列
+                    const levels = Array.from(new Set(nodes.map(n => n.level))).sort();
+                    const index = levels.indexOf(d.level);
+                    return height * (index + 1) / (levels.length + 1);
+                }).strength(0.3));
 
             // 绘制边
             const linkGroup = g.selectAll('.link')
-                .data(links, d => getEdgeId(d))
+                .data(linksData, d => getEdgeId(d))
                 .join('path')
                 .attr('class', 'link')
-                .attr('stroke', colors.link)
-                .attr('stroke-width', d => Math.max(1, d.jaccard * 10))
+                .attr('stroke', d => d.type === 'time' ? colors.timeLink : colors.levelLink)
+                .attr('stroke-width', d => {
+                    if (d.type === 'time') {
+                        return Math.max(1, (d.jaccard || 0.1) * 10);
+                    } else {
+                        return 2;
+                    }
+                })
+                .attr('stroke-dasharray', d => d.type === 'level' ? '5,5' : null)
                 .on('mouseenter', showEdgeTooltip)
                 .on('mouseleave', hideTooltip)
                 .on('click', (event, d) => {
@@ -709,7 +879,7 @@
             nodeGroup.append('text')
                 .attr('class', 'node-label')
                 .attr('dy', d => (d.display_size || Math.max(8, Math.min(30, d.total_degree * 2))) + 15)
-                .text(d => `${d.community}`);
+                .text(d => `L${d.level}-${d.community}`);
 
             nodeGroup
                 .on('click', (event, d) => {
@@ -741,24 +911,35 @@
         }
 
         function getNodeColor(node) {
-            if (expandedNodes.has(node.id)) return colors.expanded;
-            if (!edgesBySource[node.id] || edgesBySource[node.id].length === 0) return colors.leaf;
-            return colors.collapsed;
+            // 根据层级设置不同的颜色
+            const levelColors = {
+                1: colors.level1,
+                2: colors.level2,
+                3: colors.level3
+            };
+
+            return levelColors[node.level] || colors.collapsed;
         }
 
         function getEdgeId(edge) {
-            return `${edge.source}-${edge.target}`;
+            // 边ID格式：type|source|target
+            if (edge.type === 'time') {
+                return `time|${edge.source}|${edge.target}`;
+            } else if (edge.type === 'level') {
+                return `level|${edge.source}|${edge.target}`;
+            }
+            return `${edge.source}|${edge.target}`;
         }
 
         // ============================================
         // 节点交互
         // ============================================
         function handleNodeClick(node) {
-            // 左键点击：展开或收起
-            if (expandedNodes.has(node.id)) {
+            // 左键点击：展开或收起（默认展开时间连接）
+            if (expandedNodes.has(node.id) || expandedLevels.has(node.id)) {
                 collapseNode(node.id);
             } else {
-                expandNode(node.id);
+                expandNodeTime(node.id);
             }
             showNodeDetails(node);
         }
@@ -776,17 +957,37 @@
             menu.style.top = y + 'px';
 
             // 根据节点状态启用/禁用菜单项
-            const expandItem = document.getElementById('menuExpand');
+            const expandTimeItem = document.getElementById('menuExpandTime');
+            const expandLevelItem = document.getElementById('menuExpandLevel');
             const collapseItem = document.getElementById('menuCollapse');
 
-            if (expandedNodes.has(node.id)) {
-                expandItem.style.opacity = '0.5';
-                expandItem.style.pointerEvents = 'none';
+            const hasTimeEdges = timeEdgesBySource[node.id] && timeEdgesBySource[node.id].length > 0;
+            const hasLevelEdges = levelEdgesByNode[node.id] && levelEdgesByNode[node.id].length > 0;
+            const isExpanded = expandedNodes.has(node.id) || expandedLevels.has(node.id);
+
+            // 时间连接菜单项
+            if (expandedNodes.has(node.id) || !hasTimeEdges) {
+                expandTimeItem.style.opacity = '0.5';
+                expandTimeItem.style.pointerEvents = 'none';
+            } else {
+                expandTimeItem.style.opacity = '1';
+                expandTimeItem.style.pointerEvents = 'auto';
+            }
+
+            // 层级关系菜单项
+            if (expandedLevels.has(node.id) || !hasLevelEdges) {
+                expandLevelItem.style.opacity = '0.5';
+                expandLevelItem.style.pointerEvents = 'none';
+            } else {
+                expandLevelItem.style.opacity = '1';
+                expandLevelItem.style.pointerEvents = 'auto';
+            }
+
+            // 收起菜单项
+            if (isExpanded) {
                 collapseItem.style.opacity = '1';
                 collapseItem.style.pointerEvents = 'auto';
             } else {
-                expandItem.style.opacity = '1';
-                expandItem.style.pointerEvents = 'auto';
                 collapseItem.style.opacity = '0.5';
                 collapseItem.style.pointerEvents = 'none';
             }
@@ -798,8 +999,9 @@
             currentContextNode = null;
         }
 
-        function expandNode(nodeId) {
-            const edges = edgesBySource[nodeId] || [];
+        function expandNodeTime(nodeId) {
+            // 展开时间连接（横向，下一年）
+            const edges = timeEdgesBySource[nodeId] || [];
             if (edges.length === 0) return;
 
             expandedNodes.add(nodeId);
@@ -813,46 +1015,102 @@
             updateVisualization();
         }
 
-        function collapseNode(nodeId) {
-            const edges = edgesBySource[nodeId] || [];
+        function expandNodeLevel(nodeId) {
+            // 展开层级关系（纵向，不同层级）
+            const edges = levelEdgesByNode[nodeId] || [];
+            if (edges.length === 0) return;
 
-            expandedNodes.delete(nodeId);
+            expandedLevels.add(nodeId);
 
             edges.forEach(edge => {
-                const targetId = edge.target;
-                const edgeId = getEdgeId(edge);
+                // 添加目标节点
+                visibleNodes.add(edge.target);
+                visibleEdges.add(getEdgeId(edge));
 
-                // 移除边
-                visibleEdges.delete(edgeId);
-
-                // 检查目标节点是否还有其他入边
-                const hasOtherIncoming = Array.from(visibleEdges).some(eId => {
-                    const e = allData.links.find(link => getEdgeId(link) === eId);
-                    return e && e.target === targetId;
-                });
-
-                // 如果没有其他入边，移除节点
-                if (!hasOtherIncoming) {
-                    visibleNodes.delete(targetId);
-                    // 递归收起该节点
-                    if (expandedNodes.has(targetId)) {
-                        collapseNode(targetId);
-                    }
+                // 如果是双向边，也添加源节点
+                if (edge.source !== nodeId) {
+                    visibleNodes.add(edge.source);
                 }
             });
 
             updateVisualization();
         }
 
+        function collapseNode(nodeId) {
+            // 收起时间连接
+            const timeEdges = timeEdgesBySource[nodeId] || [];
+            timeEdges.forEach(edge => {
+                const targetId = edge.target;
+                const edgeId = getEdgeId(edge);
+
+                // 移除边
+                visibleEdges.delete(edgeId);
+
+                // 检查目标节点是否还有其他可见边
+                const hasOtherVisibleEdges = Array.from(visibleEdges).some(eId => {
+                    return eId.includes(targetId);
+                });
+
+                // 如果没有其他可见边，移除节点
+                if (!hasOtherVisibleEdges) {
+                    visibleNodes.delete(targetId);
+                    // 递归收起该节点
+                    if (expandedNodes.has(targetId) || expandedLevels.has(targetId)) {
+                        collapseNode(targetId);
+                    }
+                }
+            });
+
+            // 收起层级关系
+            const levelEdges = levelEdgesByNode[nodeId] || [];
+            levelEdges.forEach(edge => {
+                const edgeId = getEdgeId(edge);
+                visibleEdges.delete(edgeId);
+
+                // 检查相关节点是否还有其他可见边
+                [edge.source, edge.target].forEach(relatedId => {
+                    if (relatedId !== nodeId) {
+                        const hasOtherVisibleEdges = Array.from(visibleEdges).some(eId => {
+                            return eId.includes(relatedId);
+                        });
+
+                        if (!hasOtherVisibleEdges) {
+                            visibleNodes.delete(relatedId);
+                            if (expandedNodes.has(relatedId) || expandedLevels.has(relatedId)) {
+                                collapseNode(relatedId);
+                            }
+                        }
+                    }
+                });
+            });
+
+            expandedNodes.delete(nodeId);
+            expandedLevels.delete(nodeId);
+
+            updateVisualization();
+        }
+
         function collapseAll() {
-            const minYear = Math.min(...Array.from(visibleNodes).map(id => nodeData[id].year));
-            initializeView(minYear);
+            const nodes = Array.from(visibleNodes).map(id => nodeData[id]).filter(n => n);
+            if (nodes.length === 0) return;
+
+            const minYear = Math.min(...nodes.map(n => n.year));
+            const minLevel = Math.min(...nodes.map(n => n.level));
+            initializeView(minYear, minLevel);
         }
 
         function resetView() {
-            if (!allData) return;
-            const minYear = Math.min(...Object.keys(nodesByYear).map(Number));
-            initializeView(minYear);
+            if (Object.keys(allDataByLevel).length === 0) return;
+
+            const selectedLevel = parseInt(d3.select('#startLevelSelect').property('value')) || currentLevel;
+            if (!nodesByYearAndLevel[selectedLevel]) return;
+
+            const years = Object.keys(nodesByYearAndLevel[selectedLevel]).map(Number);
+            const minYear = Math.min(...years);
+            const defaultYear = minYear >= 2000 ? 2000 : minYear;
+            const startYear = nodesByYearAndLevel[selectedLevel][defaultYear] ? defaultYear : minYear;
+
+            initializeView(startYear, selectedLevel);
         }
 
         // ============================================
