@@ -859,6 +859,12 @@
                 }
             });
 
+            // 计算年份和层级数量（用于确定布局强度）
+            const years = Array.from(new Set(nodes.map(n => n.year))).sort();
+            const yearCount = years.length;
+            const levels = Array.from(new Set(nodes.map(n => n.level))).sort();
+            const levelCount = levels.length;
+
             // 创建力导向图模拟
             simulation = d3.forceSimulation(nodes)
                 .force('link', d3.forceLink(linksData)
@@ -866,18 +872,43 @@
                     .distance(d => d.type === 'time' ? 150 : 100))
                 .force('charge', d3.forceManyBody().strength(-300))
                 .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => {
+                    // 添加碰撞检测，防止节点重叠
+                    const baseRadius = d.display_size || Math.max(8, Math.min(30, (d.total_degree || 1) * 2));
+                    return baseRadius + 5;
+                }).strength(0.7))
                 .force('x', d3.forceX(d => {
                     // 按年份横向排列
-                    const years = Array.from(new Set(nodes.map(n => n.year))).sort();
-                    const index = years.indexOf(d.year);
-                    return width * (index + 1) / (years.length + 1);
-                }).strength(0.5))
+                    if (yearCount === 1) {
+                        // 单年份：根据节点在数组中的位置散开
+                        const nodesInYear = nodes.filter(n => n.year === d.year);
+                        const nodeIndex = nodesInYear.indexOf(d);
+                        const totalInYear = nodesInYear.length;
+
+                        // 在画布宽度范围内均匀分布
+                        return (width * 0.2) + (width * 0.6) * (nodeIndex / Math.max(1, totalInYear - 1));
+                    } else {
+                        // 多年份：按年份横向排列
+                        const index = years.indexOf(d.year);
+                        return width * (index + 1) / (yearCount + 1);
+                    }
+                }).strength(yearCount === 1 ? 0.3 : 0.5))
                 .force('y', d3.forceY(d => {
                     // 按层级纵向排列
-                    const levels = Array.from(new Set(nodes.map(n => n.level))).sort();
-                    const index = levels.indexOf(d.level);
-                    return height * (index + 1) / (levels.length + 1);
-                }).strength(0.3));
+                    if (levelCount === 1) {
+                        // 单层级：根据节点在数组中的位置散开
+                        const nodesInLevel = nodes.filter(n => n.level === d.level);
+                        const nodeIndex = nodesInLevel.indexOf(d);
+                        const totalInLevel = nodesInLevel.length;
+
+                        // 在画布高度范围内均匀分布
+                        return (height * 0.2) + (height * 0.6) * (nodeIndex / Math.max(1, totalInLevel - 1));
+                    } else {
+                        // 多层级：按层级纵向排列
+                        const index = levels.indexOf(d.level);
+                        return height * (index + 1) / (levelCount + 1);
+                    }
+                }).strength(levelCount === 1 ? 0.3 : 0.3));
 
             // 绘制边
             const linkGroup = g.selectAll('.link')
@@ -1055,18 +1086,33 @@
         function expandNodeLevel(nodeId) {
             // 展开层级关系（纵向，不同层级）
             const edges = levelEdgesByNode[nodeId] || [];
-            if (edges.length === 0) return;
+            if (edges.length === 0) {
+                console.log('节点', nodeId, '没有层级边');
+                return;
+            }
 
             expandedLevels.add(nodeId);
 
+            console.log('展开层级关系，节点:', nodeId, '找到', edges.length, '条边');
+
             edges.forEach(edge => {
-                // 添加目标节点
-                visibleNodes.add(edge.target);
+                // 添加边
                 visibleEdges.add(getEdgeId(edge));
 
-                // 如果是双向边，也添加源节点
-                if (edge.source !== nodeId) {
+                // 判断当前节点是源还是目标，添加另一端的节点
+                if (edge.source === nodeId) {
+                    // 当前节点是源，添加目标节点（下级社区）
+                    visibleNodes.add(edge.target);
+                    console.log('  添加目标节点（下级）:', edge.target);
+                } else if (edge.target === nodeId) {
+                    // 当前节点是目标，添加源节点（上级社区）
                     visibleNodes.add(edge.source);
+                    console.log('  添加源节点（上级）:', edge.source);
+                } else {
+                    // 既不是源也不是目标，添加两端（理论上不应该发生）
+                    visibleNodes.add(edge.source);
+                    visibleNodes.add(edge.target);
+                    console.log('  添加两端节点:', edge.source, edge.target);
                 }
             });
 
