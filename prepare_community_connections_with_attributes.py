@@ -585,20 +585,154 @@ class EvolutionChainAnalyzerWithOverlapAttributes:
         }
         
         return stats
-    
+
+    def _get_community_aggregated_attributes(self, year, community_id):
+        """
+        获取社区的聚合属性（用于图可视化）
+
+        Returns:
+        --------
+        dict: 社区属性（total_workforce, top3_states, top5_metros等）
+        """
+        df = self.load_community_data_for_year(year)
+
+        if df is None or self.level_column not in df.columns:
+            return {
+                'total_workforce': 0,
+                'top3_states': [],
+                'top5_metros': [],
+                'top3_naics_2digit': [],
+                'top3_naics_4digit': [],
+                'avg_wage': None,
+                'total_companies': None
+            }
+
+        # 筛选社区数据
+        community_df = df[df[self.level_column].astype(str) == str(community_id)].copy()
+
+        if len(community_df) == 0:
+            return {
+                'total_workforce': 0,
+                'top3_states': [],
+                'top5_metros': [],
+                'top3_naics_2digit': [],
+                'top3_naics_4digit': [],
+                'avg_wage': None,
+                'total_companies': None
+            }
+
+        # 计算聚合属性
+        def get_top_n(column, n):
+            if column not in community_df.columns:
+                return []
+            counts = community_df[column].replace('unknown', None).dropna().value_counts()
+            result = []
+            for value, count in counts.head(n).items():
+                result.append({
+                    'value': str(value),
+                    'count': int(count),
+                    'percentage': round(count / len(community_df) * 100, 2)
+                })
+            return result
+
+        def get_top_n_naics(column, digits, n):
+            if column not in community_df.columns:
+                return []
+            naics_codes = community_df[column].apply(
+                lambda x: str(x)[:digits] if pd.notna(x) and str(x) != 'unknown' and len(str(x)) >= digits else None
+            ).dropna()
+            counts = naics_codes.value_counts()
+            result = []
+            for value, count in counts.head(n).items():
+                result.append({
+                    'value': str(value),
+                    'count': int(count),
+                    'percentage': round(count / len(community_df) * 100, 2)
+                })
+            return result
+
+        attributes = {
+            'total_workforce': len(community_df),
+            'top3_states': get_top_n('real_state', 3),
+            'top5_metros': get_top_n('real_metro_area', 5),
+            'top3_naics_2digit': get_top_n_naics('naics_code', 2, 3),
+            'top3_naics_4digit': get_top_n_naics('naics_code', 4, 3),
+            'avg_wage': float(community_df['wage'].mean()) if 'wage' in community_df.columns else None,
+            'total_companies': int(community_df['rcid'].nunique()) if 'rcid' in community_df.columns else None
+        }
+
+        return attributes
+
+    def _convert_chains_to_graph(self, chains):
+        """
+        将演化链转换为图可视化格式
+
+        Returns:
+        --------
+        dict: {'nodes': [...], 'links': [...]}
+        """
+        nodes_dict = {}  # key: "year_community", value: node object
+        links_list = []
+
+        # 遍历所有演化链
+        for chain in chains:
+            # 添加节点
+            for comm in chain['communities']:
+                year = comm['year']
+                community = str(comm['community'])
+                node_id = f"{year}_{community}"
+
+                if node_id not in nodes_dict:
+                    # 获取社区属性
+                    attributes = self._get_community_aggregated_attributes(year, community)
+
+                    nodes_dict[node_id] = {
+                        'id': node_id,
+                        'year': year,
+                        'community': community,
+                        'attributes': attributes
+                    }
+
+            # 添加边
+            for trans in chain['transitions']:
+                source_id = f"{trans['from_year']}_{trans['from_community']}"
+                target_id = f"{trans['to_year']}_{trans['to_community']}"
+
+                link = {
+                    'source': source_id,
+                    'target': target_id,
+                    'jaccard': trans.get('jaccard'),
+                    'retention_forward': trans.get('retention_forward'),
+                    'retention_backward': trans.get('retention_backward'),
+                    'overlap_size': trans.get('overlap_size', 0),
+                    'overlap_attributes': trans.get('overlap_attributes', {})
+                }
+
+                links_list.append(link)
+
+        # 转换为列表
+        nodes_list = list(nodes_dict.values())
+
+        logging.info(f"  Converted to {len(nodes_list)} nodes and {len(links_list)} links")
+
+        return {
+            'nodes': nodes_list,
+            'links': links_list
+        }
+
     def save_results(self, chains, stats, filter_params):
         """保存分析结果"""
         logging.info(f"\nSaving results to {self.output_dir}")
-        
+
         # 保存完整的演化链数据（包含重叠属性）
         chains_file = self.output_dir / "evolution_chains_with_overlap_attributes.json"
         with open(chains_file, 'w', encoding='utf-8') as f:
             json.dump(chains, f, indent=2, ensure_ascii=False, default=str)
-        
+
         file_size_mb = chains_file.stat().st_size / (1024 * 1024)
         logging.info(f"✓ Saved chains: {chains_file}")
         logging.info(f"  File size: {file_size_mb:.2f} MB")
-        
+
         # 保存统计摘要
         summary = {
             'level': self.level,
@@ -606,13 +740,13 @@ class EvolutionChainAnalyzerWithOverlapAttributes:
             'statistics': stats,
             'analysis_timestamp': pd.Timestamp.now().isoformat()
         }
-        
+
         summary_file = self.output_dir / "chain_analysis_summary.json"
         with open(summary_file, 'w', encoding='utf-8') as f:
             json.dump(summary, f, indent=2, default=str)
-        
+
         logging.info(f"✓ Saved summary: {summary_file}")
-        
+
         # 生成简化版本（不含详细属性分布，便于快速浏览）
         chains_simple = []
         for chain in chains:
@@ -638,12 +772,26 @@ class EvolutionChainAnalyzerWithOverlapAttributes:
                 ]
             }
             chains_simple.append(chain_simple)
-        
+
         simple_file = self.output_dir / "evolution_chains_simple.json"
         with open(simple_file, 'w', encoding='utf-8') as f:
             json.dump(chains_simple, f, indent=2, ensure_ascii=False, default=str)
-        
+
         logging.info(f"✓ Saved simple version: {simple_file}")
+
+        # 生成图可视化格式（nodes和links）
+        logging.info("\nGenerating graph visualization format...")
+        graph_data = self._convert_chains_to_graph(chains)
+
+        graph_file = self.output_dir / "community_connections_with_attributes.json"
+        with open(graph_file, 'w', encoding='utf-8') as f:
+            json.dump(graph_data, f, indent=2, ensure_ascii=False, default=str)
+
+        graph_size_mb = graph_file.stat().st_size / (1024 * 1024)
+        logging.info(f"✓ Saved graph format: {graph_file}")
+        logging.info(f"  File size: {graph_size_mb:.2f} MB")
+        logging.info(f"  Nodes: {len(graph_data['nodes'])}")
+        logging.info(f"  Links: {len(graph_data['links'])}")
     
     def print_summary(self, chains, stats):
         """打印分析摘要"""
