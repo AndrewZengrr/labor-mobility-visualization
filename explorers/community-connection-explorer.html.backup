@@ -368,115 +368,6 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #4a5575;
         }
-
-        /* 浮动属性窗口 */
-        .property-modal {
-            position: fixed;
-            display: none;
-            background: #1e2847;
-            border: 2px solid #4a90e2;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            z-index: 3000;
-            max-width: 500px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .property-modal-header {
-            background: linear-gradient(135deg, #2a3555 0%, #1e2847 100%);
-            padding: 16px 20px;
-            border-bottom: 1px solid #3a4565;
-            border-radius: 10px 10px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .property-modal-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #ffffff;
-        }
-
-        .property-modal-close {
-            background: transparent;
-            border: none;
-            color: #8892b0;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-
-        .property-modal-close:hover {
-            background: #2a3555;
-            color: #ffffff;
-        }
-
-        .property-modal-content {
-            padding: 20px;
-        }
-
-        .property-section {
-            margin-bottom: 20px;
-        }
-
-        .property-section-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #4a90e2;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #2a3555;
-        }
-
-        .property-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 12px;
-            margin: 4px 0;
-            background: #151b35;
-            border-radius: 6px;
-            font-size: 13px;
-        }
-
-        .property-label {
-            color: #8892b0;
-            flex: 0 0 45%;
-        }
-
-        .property-value {
-            color: #e0e0e0;
-            flex: 1;
-            text-align: right;
-            font-weight: 500;
-        }
-
-        .property-list-item {
-            padding: 6px 12px;
-            margin: 3px 0;
-            background: #151b35;
-            border-radius: 4px;
-            font-size: 12px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .property-list-label {
-            color: #e0e0e0;
-        }
-
-        .property-list-value {
-            color: #4a90e2;
-            font-weight: 500;
-        }
     </style>
 </head>
 <body>
@@ -582,17 +473,6 @@
                     <span>层级关系</span>
                 </div>
             </div>
-
-            <!-- 浮动属性窗口 -->
-            <div class="property-modal" id="propertyModal">
-                <div class="property-modal-header">
-                    <div class="property-modal-title" id="propertyModalTitle">属性</div>
-                    <button class="property-modal-close" id="propertyModalClose">&times;</button>
-                </div>
-                <div class="property-modal-content" id="propertyModalContent">
-                    <!-- 动态内容 -->
-                </div>
-            </div>
         </div>
     </div>
 
@@ -680,15 +560,6 @@
             // 点击空白处隐藏右键菜单
             document.addEventListener('click', hideContextMenu);
 
-            // 浮动属性窗口关闭按钮
-            d3.select('#propertyModalClose').on('click', hidePropertyModal);
-            // 点击窗口外部关闭
-            d3.select('#propertyModal').on('click', (event) => {
-                if (event.target.id === 'propertyModal') {
-                    hidePropertyModal();
-                }
-            });
-
             // 禁用浏览器默认右键菜单
             document.addEventListener('contextmenu', (e) => {
                 if (e.target.closest('#svg-container')) {
@@ -749,17 +620,12 @@
                     nodesByYearAndLevel[levelNum] = {};
                 }
 
-                // 处理节点 - 新格式中节点ID已经是 "year_community" 格式
+                // 处理节点 - 添加层级信息到节点ID
                 data.nodes.forEach(node => {
                     const year = node.year;
-                    // 添加层级信息，保留原始ID和属性
-                    const enhancedNode = {
-                        ...node,
-                        level: levelNum,
-                        originalId: node.id,
-                        // 新的节点ID格式: L{level}_{originalId}
-                        id: `L${levelNum}_${node.id}`
-                    };
+                    const enhancedNode = {...node, level: levelNum, originalId: node.id};
+                    // 新的节点ID格式: level_year_community
+                    enhancedNode.id = `L${levelNum}_${node.year}_${node.community}`;
 
                     if (!nodesByYearAndLevel[levelNum][year]) {
                         nodesByYearAndLevel[levelNum][year] = [];
@@ -768,7 +634,7 @@
                     nodeData[enhancedNode.id] = enhancedNode;
                 });
 
-                // 处理时间边 - 新格式中边的source和target已经是 "year_community" 格式
+                // 处理时间边
                 data.links.forEach(edge => {
                     const sourceId = `L${levelNum}_${edge.source}`;
                     const targetId = `L${levelNum}_${edge.target}`;
@@ -1134,44 +1000,16 @@
         }
 
         // ============================================
-        // 浮动属性窗口
-        // ============================================
-        function showPropertyModal(title, content, x, y) {
-            const modal = d3.select('#propertyModal');
-            const modalTitle = d3.select('#propertyModalTitle');
-            const modalContent = d3.select('#propertyModalContent');
-
-            modalTitle.text(title);
-            modalContent.html(content);
-
-            // 设置位置（默认在视窗右侧中央偏右）
-            if (x !== undefined && y !== undefined) {
-                modal.style('left', x + 'px').style('top', y + 'px');
-            } else {
-                // 默认位置：屏幕右侧中央偏右
-                const windowWidth = window.innerWidth;
-                const windowHeight = window.innerHeight;
-                modal.style('left', (windowWidth - 550) + 'px')
-                     .style('top', (windowHeight / 2 - 250) + 'px');
-            }
-
-            modal.style('display', 'block');
-        }
-
-        function hidePropertyModal() {
-            d3.select('#propertyModal').style('display', 'none');
-        }
-
-        // ============================================
         // 节点交互
         // ============================================
         function handleNodeClick(node) {
-            // 左键点击：展开下一年的时间连接
-            if (expandedNodes.has(node.id)) {
+            // 左键点击：展开或收起（默认展开时间连接）
+            if (expandedNodes.has(node.id) || expandedLevels.has(node.id)) {
                 collapseNode(node.id);
             } else {
                 expandNodeTime(node.id);
             }
+            showNodeDetails(node);
         }
 
         function handleNodeRightClick(event, node) {
@@ -1427,22 +1265,11 @@
         }
 
         function showCommunityProperties(node) {
+            const panel = d3.select('#detailsPanel');
+            const legacyProperties = communityProperties[node.id];  // 旧格式（state_dist, metro_dist等）
             const newAttributes = node.attributes;  // 新格式（top3_states, top5_metros等）
 
-            let html = `<div class="property-section">
-                <div class="property-item">
-                    <div class="property-label">社区ID</div>
-                    <div class="property-value">${node.community}</div>
-                </div>
-                <div class="property-item">
-                    <div class="property-label">年份</div>
-                    <div class="property-value">${node.year}</div>
-                </div>
-                <div class="property-item">
-                    <div class="property-label">社区大小</div>
-                    <div class="property-value">${node.size || 'N/A'}</div>
-                </div>
-            </div>`;
+            let html = `<h3>📊 社区属性 - ${node.id}</h3>`;
 
             // 基本信息
             html += `
@@ -1628,8 +1455,7 @@
                 }
             }
 
-            // 使用浮动窗口显示
-            showPropertyModal(`社区属性 - L${node.level} ${node.community}`, html);
+            panel.html(html);
         }
 
         function showEdgeDetails(edge) {
@@ -1975,11 +1801,7 @@
                 </div>`;
             }
 
-            // 使用浮动窗口显示
-            const sourceNode = nodeData[edge.source];
-            const targetNode = nodeData[edge.target];
-            const title = `边属性 - ${sourceNode?.community || edge.source} → ${targetNode?.community || edge.target}`;
-            showPropertyModal(title, html);
+            panel.html(html);
         }
 
         // ============================================
